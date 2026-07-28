@@ -2067,18 +2067,6 @@ export const allLaptops: Laptop[] = [
   },
 
   {
-    id: 'lenovo-legion-y7000p-2023',
-    brand: 'lenovo', series: 'Legion Pro 5', displayName: '拯救者Y7000P',
-    model: 'Legion Pro 5 16IRX8',
-    release: '2023-05', cpu: 'Intel Core i7-13700H (14C/20T)',
-    gpu: 'NVIDIA GeForce RTX 4060 Laptop 8GB (140W)',
-    ram: '16 GB DDR5-5200 (双通道)', storage: '1 TB PCIe 4.0 NVMe SSD',
-    display: '16" 2560×1600 165Hz IPS, 350nit, 100% sRGB', weightKg: 2.4, priceCny: 7999,
-      stressTest: { cpuPowerW: 75, cpuTempC: 90, cpuFreqGHz: 4, gpuPowerW: 140, gpuTempC: 76, gpuFreqMHz: 2500, dualCpuPowerW: 41, dualGpuPowerW: 129, dualCpuTempC: 88, dualGpuTempC: 74, note: '数据来源：笔吧评测室 / 综合评测数据' },
-    sources: [BRAND_SITE('联想', 'https://www.lenovo.com.cn/'), JD('拯救者Y7000P')],
-  },
-
-  {
     id: 'lenovo-legion-y7000p-2023-i5',
     brand: 'lenovo', series: 'Legion Pro 5', displayName: '拯救者Y7000P',
     model: 'Legion Pro 5 16IRX8 (i5)',
