@@ -1,4 +1,4 @@
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { getChipById } from '../data';
 import { BRAND_LABELS, CATEGORY_LABELS, FORM_FACTOR_LABELS } from '../data/types';
 import ChipDiagram from '../components/ChipDiagram';
@@ -10,6 +10,7 @@ export default function DetailPage() {
   const { id } = useParams<{ id: string }>();
   const chip = id ? getChipById(id) : undefined;
   const { add, remove, has, isFull } = useCompare();
+  const navigate = useNavigate();
 
   if (!chip) {
     return (
@@ -26,9 +27,12 @@ export default function DetailPage() {
 
   return (
     <div className="space-y-5">
-      <Link to="/browse" className="inline-block text-sm text-slate-500 hover:text-blue-600">
+      <button
+        onClick={() => navigate(-1)}
+        className="inline-block text-sm text-slate-500 hover:text-blue-600"
+      >
         ← 返回芯片列表
-      </Link>
+      </button>
 
       {/* 标题区 */}
       <div className="flex flex-wrap items-center gap-3">

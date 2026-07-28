@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { allLaptops } from '../data/laptops';
 import { LAPTOP_BRAND_LABELS } from '../data/types';
 import type { LaptopBrand } from '../data/types';
@@ -27,23 +27,25 @@ function getYear(release: string | null): string {
 }
 
 export default function LaptopListPage() {
-  // Pending filter inputs
-  const [pendingBrand, setPendingBrand] = useState<LaptopBrand | ''>('');
-  const [pendingYear, setPendingYear] = useState('');
-  const [pendingQuery, setPendingQuery] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  // Active (applied) filters
-  const [activeBrand, setActiveBrand] = useState<LaptopBrand | ''>('');
-  const [activeYear, setActiveYear] = useState('');
-  const [activeQuery, setActiveQuery] = useState('');
+  // Read active filters from URL
+  const urlBrand = (searchParams.get('brand') as LaptopBrand) || '';
+  const urlYear = searchParams.get('year') ?? '';
+  const urlQuery = searchParams.get('q') ?? '';
+
+  // Pending filter inputs (initialized from URL)
+  const [pendingBrand, setPendingBrand] = useState<LaptopBrand | ''>(urlBrand);
+  const [pendingYear, setPendingYear] = useState(urlYear);
+  const [pendingQuery, setPendingQuery] = useState(urlQuery);
 
   const filtered = useMemo(() => {
-    const q = activeQuery.trim().toLowerCase();
+    const q = urlQuery.trim().toLowerCase();
     return allLaptops.filter((l) => {
-      if (activeBrand && l.brand !== activeBrand) return false;
-      if (activeYear) {
+      if (urlBrand && l.brand !== urlBrand) return false;
+      if (urlYear) {
         const y = getYear(l.release);
-        if (y !== activeYear) return false;
+        if (y !== urlYear) return false;
       }
       if (q) {
         const haystack = `${l.brand} ${l.displayName ?? ''} ${l.series} ${l.model} ${l.cpu} ${l.gpu}`.toLowerCase();
@@ -51,21 +53,21 @@ export default function LaptopListPage() {
       }
       return true;
     });
-  }, [activeBrand, activeYear, activeQuery]);
+  }, [urlBrand, urlYear, urlQuery]);
 
   const apply = () => {
-    setActiveBrand(pendingBrand);
-    setActiveYear(pendingYear);
-    setActiveQuery(pendingQuery);
+    const next = new URLSearchParams();
+    if (pendingBrand) next.set('brand', pendingBrand);
+    if (pendingYear) next.set('year', pendingYear);
+    if (pendingQuery.trim()) next.set('q', pendingQuery.trim());
+    setSearchParams(next, { replace: true });
   };
 
   const reset = () => {
     setPendingBrand('');
     setPendingYear('');
     setPendingQuery('');
-    setActiveBrand('');
-    setActiveYear('');
-    setActiveQuery('');
+    setSearchParams(new URLSearchParams(), { replace: true });
   };
 
   return (
@@ -79,7 +81,7 @@ export default function LaptopListPage() {
 
       <div>
         <h1 className="text-2xl font-bold text-slate-900">游戏本配置查询</h1>
-        <p className="mt-1 text-sm text-slate-500">收录联想、华硕、惠普、外星人、宏碁、微星、雷蛇、七彩虹 8 大品牌主流游戏本。</p>
+        <p className="mt-1 text-sm text-slate-500">收录联想、华硕、惠普、外星人、宏碁、微星、雷蛇、七彩虹、机械革命 9 大品牌主流游戏本。</p>
       </div>
 
       {/* Filter */}
@@ -168,7 +170,7 @@ export default function LaptopListPage() {
                 </div>
                 <p className="mt-1 text-sm text-slate-500">{laptop.model}</p>
                 <div className="mt-3 space-y-1 text-xs text-slate-500">
-                  <div>🖥️ {laptop.cpu}</div>
+                  <div>🖥 {laptop.cpu}</div>
                   <div>🎮 {laptop.gpu}</div>
                   <div>📺 {laptop.display}</div>
                 </div>

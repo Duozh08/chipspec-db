@@ -1,10 +1,11 @@
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { getLaptopById } from '../data/laptops';
 import { LAPTOP_BRAND_LABELS } from '../data/types';
 
 export default function LaptopDetailPage() {
   const { id } = useParams<{ id: string }>();
   const laptop = id ? getLaptopById(id) : undefined;
+  const navigate = useNavigate();
 
   if (!laptop) {
     return (
@@ -34,9 +35,12 @@ export default function LaptopDetailPage() {
 
   return (
     <div className="space-y-5">
-      <Link to="/laptops" className="inline-block text-sm text-slate-500 hover:text-blue-600">
+      <button
+        onClick={() => navigate(-1)}
+        className="inline-block text-sm text-slate-500 hover:text-blue-600"
+      >
         ← 返回游戏本列表
-      </Link>
+      </button>
 
       {/* 标题区 */}
       <div className="flex flex-wrap items-center gap-3">
