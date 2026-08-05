@@ -163,24 +163,51 @@ export type LaptopBrand =
   | 'lenovo'
   | 'asus'
   | 'hp'
-  | 'alienware'
+  | 'dell'
   | 'acer'
   | 'msi'
   | 'razer'
   | 'colorful'
-  | 'mechrevo';
+  | 'mechrevo'
+  | 'hasee'
+  | 'xiaomi'
+  | 'honor'
+  | 'gigabyte'
+  | 'huawei'
+  | 'machenike'
+  | 'thunderobot';
 
 export const LAPTOP_BRAND_LABELS: Record<LaptopBrand, string> = {
   lenovo: '联想 Lenovo',
   asus: '华硕 ASUS',
   hp: '惠普 HP',
-  alienware: '外星人 Alienware',
+  dell: '戴尔 Dell',
   acer: '宏碁 Acer',
   msi: '微星 MSI',
   razer: '雷蛇 Razer',
   colorful: '七彩虹 Colorful',
   mechrevo: '机械革命 Mechrevo',
+  hasee: '神舟 HASEE',
+  xiaomi: '小米 Xiaomi',
+  honor: '荣耀 Honor',
+  gigabyte: '技嘉 GIGABYTE',
+  huawei: '华为 Huawei',
+  machenike: '机械师 MACHENIKE',
+  thunderobot: '雷神 Thunderobot',
 };
+
+/** CPU 平台类型 */
+export type CpuPlatform = 'intel' | 'amd';
+
+/** 根据 CPU 型号字符串判断平台 */
+export function cpuPlatform(cpu: string): CpuPlatform {
+  const s = cpu.toLowerCase();
+  if (s.includes('r9') || s.includes('r7') || s.includes('r5') ||
+      s.includes('ryzen') || s.includes('锐龙') || s.includes('amd')) {
+    return 'amd';
+  }
+  return 'intel';
+}
 
 /** 单烤 / 双烤测试数据 */
 export interface StressTestData {
@@ -213,28 +240,26 @@ export interface Laptop {
   /** URL slug，全局唯一 */
   id: string;
   brand: LaptopBrand;
-  /** 系列名，如 "Legion"、"ROG Strix"、"Omen" */
+  /** 系列名，来自 Excel "系列" 列 */
   series: string;
-  /** 中文展示名称，如 "拯救者Y9000P"、"魔霸7 Plus" */
-  displayName?: string;
-  /** 具体型号，如 "Legion Pro 7 16IRX9" */
+  /** 中文展示名称，来自 Excel "中文名称" 列 */
+  displayName: string;
+  /** 具体型号，来自 Excel "型号" 列 */
   model: string;
   /** 发布时间 "YYYY" 或 "YYYY-MM" */
   release: string | null;
-  /** 处理器（型号名称，如 "Core i9-14900HX"） */
-  cpu: string;
-  /** 显卡（型号名称，如 "GeForce RTX 4070 Laptop"） */
-  gpu: string;
-  /** 内存（如 "32 GB DDR5-5600"） */
+  /** 处理器方案列表（同一型号可能有多个 CPU 选项） */
+  cpuOptions: string[];
+  /** 显卡方案列表（同一型号可能有多个 GPU 选项） */
+  gpuOptions: string[];
+  /** 内存（如 "16GB DDR4-3200"） */
   ram: string;
-  /** 硬盘（如 "1 TB PCIe 4.0 NVMe SSD"） */
+  /** 硬盘（如 "512GB SSD"） */
   storage: string;
-  /** 屏幕（如 '16" 2560×1600 240Hz IPS'） */
+  /** 屏幕（如 '15.6" 1920x1080 165Hz'） */
   display: string;
-  /** 重量（kg），精确到 0.01 */
+  /** 重量（kg），无公开数据则 null */
   weightKg: number | null;
-  /** 参考售价（人民币元），取主流电商中配价格区间高值 */
-  priceCny: number | null;
   /** 烤机测试数据（单烤CPU/单烤GPU/双烤） */
   stressTest?: StressTestData;
   /** 数据来源 */
@@ -242,13 +267,20 @@ export interface Laptop {
 }
 
 export const LAPTOP_SERIES_BY_BRAND: Record<LaptopBrand, string[]> = {
-  lenovo: ['Legion Pro 7', 'Legion Pro 5', 'Legion 7', 'Legion 5'],
-  asus: ['ROG Strix Scar', 'ROG Strix G', 'ROG Zephyrus G', 'ROG Zephyrus M', 'TUF Gaming'],
-  hp: ['Omen 17', 'Omen 16', 'Omen Transcend'],
-  alienware: ['Alienware m18', 'Alienware m16', 'Alienware x16', 'Alienware m15', 'Alienware x15'],
-  acer: ['Predator Helios 18', 'Predator Helios 16', 'Predator Helios Neo'],
-  msi: ['Raider', 'Stealth', 'Vector', 'Katana', 'GP', 'GE'],
-  razer: ['Blade 18', 'Blade 16', 'Blade 14', 'Blade 15'],
-  colorful: ['隐星 P16', '隐星 P15'],
-  mechrevo: ['蛟龙16', '蛟龙17', '极光Pro', '极光X', '钛钽Plus', '耀世16 Pro', '旷世16'],
+  lenovo: ['Legion', '拯救者'],
+  asus: ['ROG', '天选'],
+  hp: ['OMEN', '暗影精灵'],
+  dell: ['Alienware', '游匣'],
+  acer: ['暗影骑士', '掠夺者'],
+  msi: ['Raider', 'Stealth', 'Vector', 'Katana'],
+  razer: ['Blade'],
+  colorful: ['将星'],
+  mechrevo: ['蛟龙', '极光', '旷世', '耀世', '钛钽'],
+  hasee: ['战神'],
+  xiaomi: ['Redmi G'],
+  honor: ['MagicBook Pro'],
+  gigabyte: ['AORUS', 'G5', 'G6X', 'G7'],
+  huawei: ['MateBook GT'],
+  machenike: ['曙光', '创物者'],
+  thunderobot: ['911', 'Zero', 'Mix'],
 };

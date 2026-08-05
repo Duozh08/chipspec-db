@@ -1,11 +1,13 @@
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { getLaptopById } from '../data/laptops';
-import { LAPTOP_BRAND_LABELS } from '../data/types';
+import { LAPTOP_BRAND_LABELS, cpuPlatform } from '../data/types';
+import { useFavorites } from '../hooks/useFavorites';
 
 export default function LaptopDetailPage() {
   const { id } = useParams<{ id: string }>();
   const laptop = id ? getLaptopById(id) : undefined;
   const navigate = useNavigate();
+  const { has: hasFav, toggle: toggleFav } = useFavorites();
 
   if (!laptop) {
     return (
@@ -18,19 +20,22 @@ export default function LaptopDetailPage() {
     );
   }
 
+  const inFav = hasFav(laptop.id);
+  const year = laptop.release ? laptop.release.slice(0, 4) : '';
+
+  // 按平台分组 CPU 方案
+  const intelCpus = laptop.cpuOptions.filter((c) => cpuPlatform(c) === 'intel');
+  const amdCpus = laptop.cpuOptions.filter((c) => cpuPlatform(c) === 'amd');
+
   const specs: [string, string][] = [
     ['品牌', LAPTOP_BRAND_LABELS[laptop.brand]],
     ['系列', laptop.series],
-    ['中文名称', laptop.displayName ?? '—'],
+    ['中文名称', laptop.displayName],
     ['型号', laptop.model],
     ['发布时间', laptop.release ?? '暂无数据'],
-    ['处理器', laptop.cpu],
-    ['显卡', laptop.gpu],
     ['内存', laptop.ram],
     ['硬盘', laptop.storage],
     ['屏幕', laptop.display],
-    ['重量', laptop.weightKg != null ? `${laptop.weightKg} kg` : '暂无数据'],
-    ['参考售价', laptop.priceCny != null ? `¥${laptop.priceCny.toLocaleString()}` : '暂无数据'],
   ];
 
   return (
@@ -45,26 +50,102 @@ export default function LaptopDetailPage() {
       {/* 标题区 */}
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-2xl font-bold text-slate-900">
-          {laptop.displayName || laptop.series}
-          {laptop.release ? ` ${laptop.release.slice(0, 4)}款` : ''}
+          {laptop.displayName}{year ? ` ${year}款` : ''}
         </h1>
         <span className="rounded-full bg-blue-600 px-2.5 py-0.5 text-xs font-medium text-white">
           {LAPTOP_BRAND_LABELS[laptop.brand]}
         </span>
         <span className="rounded-full border border-slate-300 px-2.5 py-0.5 text-xs text-slate-600">
+          {laptop.series}
+        </span>
+        <span className="rounded-full border border-slate-300 px-2.5 py-0.5 text-xs text-slate-600">
           {laptop.model}
         </span>
-        {laptop.priceCny && (
-          <span className="ml-auto text-lg font-semibold text-slate-800">
-            ¥{laptop.priceCny.toLocaleString()}
-          </span>
-        )}
+        <div className="ml-auto">
+          <button
+            type="button"
+            onClick={() => toggleFav(laptop.id)}
+            className={`rounded-lg border px-3.5 py-1.5 text-sm font-medium transition ${
+              inFav
+                ? 'border-red-500 bg-red-500 text-white hover:bg-red-600'
+                : 'border-slate-300 text-slate-600 hover:border-red-400 hover:text-red-600'
+            }`}
+          >
+            {inFav ? '★ 已关注' : '☆ 关注'}
+          </button>
+        </div>
       </div>
 
-      {/* 规格表 */}
+      {/* 处理器方案 */}
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         <div className="border-b border-slate-100 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700">
-          配置参数
+          处理器方案（共 {laptop.cpuOptions.length} 种）
+        </div>
+        <div className="p-4">
+          {/* Intel 方案 */}
+          {intelCpus.length > 0 && (
+            <div className="mb-3">
+              <div className="mb-2 flex items-center gap-2">
+                <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600">Intel</span>
+                <span className="text-xs text-slate-400">{intelCpus.length} 种方案</span>
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {intelCpus.map((cpu, i) => (
+                  <div key={i} className="flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50/50 px-3 py-2">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
+                      {i + 1}
+                    </span>
+                    <span className="text-sm font-medium text-slate-700">{cpu}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {/* AMD 方案 */}
+          {amdCpus.length > 0 && (
+            <div>
+              <div className="mb-2 flex items-center gap-2">
+                <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600">AMD</span>
+                <span className="text-xs text-slate-400">{amdCpus.length} 种方案</span>
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {amdCpus.map((cpu, i) => (
+                  <div key={i} className="flex items-center gap-2 rounded-lg border border-red-100 bg-red-50/50 px-3 py-2">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-red-600 text-xs font-bold text-white">
+                      {i + 1}
+                    </span>
+                    <span className="text-sm font-medium text-slate-700">{cpu}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 显卡方案 */}
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="border-b border-slate-100 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700">
+          显卡方案（共 {laptop.gpuOptions.length} 种）
+        </div>
+        <div className="p-4">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {laptop.gpuOptions.map((gpu, i) => (
+              <div key={i} className="flex items-center gap-2 rounded-lg border border-green-100 bg-green-50/50 px-3 py-2">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-green-600 text-xs font-bold text-white">
+                  {i + 1}
+                </span>
+                <span className="text-sm font-medium text-slate-700">{gpu}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* 基本规格表 */}
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="border-b border-slate-100 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700">
+          基本规格
         </div>
         <dl className="divide-y divide-slate-100">
           {specs.map(([label, value]) => (
@@ -83,69 +164,34 @@ export default function LaptopDetailPage() {
             烤机测试数据
           </div>
           <div className="grid divide-y divide-slate-100 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-            {/* 单烤 CPU */}
             <div className="p-4">
               <div className="mb-2 text-xs font-medium text-slate-500">单烤 CPU</div>
               <div className="space-y-1 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">功耗</span>
-                  <span className="text-slate-800">{laptop.stressTest.cpuPowerW != null ? `${laptop.stressTest.cpuPowerW} W` : '暂无'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">温度</span>
-                  <span className="text-slate-800">{laptop.stressTest.cpuTempC != null ? `${laptop.stressTest.cpuTempC} °C` : '暂无'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">频率</span>
-                  <span className="text-slate-800">{laptop.stressTest.cpuFreqGHz != null ? `${laptop.stressTest.cpuFreqGHz} GHz` : '暂无'}</span>
-                </div>
+                <div className="flex justify-between"><span className="text-slate-500">功耗</span><span className="text-slate-800">{laptop.stressTest.cpuPowerW != null ? `${laptop.stressTest.cpuPowerW} W` : '暂无'}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">温度</span><span className="text-slate-800">{laptop.stressTest.cpuTempC != null ? `${laptop.stressTest.cpuTempC} °C` : '暂无'}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">频率</span><span className="text-slate-800">{laptop.stressTest.cpuFreqGHz != null ? `${laptop.stressTest.cpuFreqGHz} GHz` : '暂无'}</span></div>
               </div>
             </div>
-            {/* 单烤 GPU */}
             <div className="p-4">
               <div className="mb-2 text-xs font-medium text-slate-500">单烤 GPU</div>
               <div className="space-y-1 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">功耗</span>
-                  <span className="text-slate-800">{laptop.stressTest.gpuPowerW != null ? `${laptop.stressTest.gpuPowerW} W` : '暂无'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">温度</span>
-                  <span className="text-slate-800">{laptop.stressTest.gpuTempC != null ? `${laptop.stressTest.gpuTempC} °C` : '暂无'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">频率</span>
-                  <span className="text-slate-800">{laptop.stressTest.gpuFreqMHz != null ? `${laptop.stressTest.gpuFreqMHz} MHz` : '暂无'}</span>
-                </div>
+                <div className="flex justify-between"><span className="text-slate-500">功耗</span><span className="text-slate-800">{laptop.stressTest.gpuPowerW != null ? `${laptop.stressTest.gpuPowerW} W` : '暂无'}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">温度</span><span className="text-slate-800">{laptop.stressTest.gpuTempC != null ? `${laptop.stressTest.gpuTempC} °C` : '暂无'}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">频率</span><span className="text-slate-800">{laptop.stressTest.gpuFreqMHz != null ? `${laptop.stressTest.gpuFreqMHz} MHz` : '暂无'}</span></div>
               </div>
             </div>
-            {/* 双烤 */}
             <div className="p-4">
               <div className="mb-2 text-xs font-medium text-slate-500">双烤</div>
               <div className="space-y-1 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">CPU 功耗</span>
-                  <span className="text-slate-800">{laptop.stressTest.dualCpuPowerW != null ? `${laptop.stressTest.dualCpuPowerW} W` : '暂无'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">GPU 功耗</span>
-                  <span className="text-slate-800">{laptop.stressTest.dualGpuPowerW != null ? `${laptop.stressTest.dualGpuPowerW} W` : '暂无'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">CPU 温度</span>
-                  <span className="text-slate-800">{laptop.stressTest.dualCpuTempC != null ? `${laptop.stressTest.dualCpuTempC} °C` : '暂无'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">GPU 温度</span>
-                  <span className="text-slate-800">{laptop.stressTest.dualGpuTempC != null ? `${laptop.stressTest.dualGpuTempC} °C` : '暂无'}</span>
-                </div>
+                <div className="flex justify-between"><span className="text-slate-500">CPU 功耗</span><span className="text-slate-800">{laptop.stressTest.dualCpuPowerW != null ? `${laptop.stressTest.dualCpuPowerW} W` : '暂无'}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">GPU 功耗</span><span className="text-slate-800">{laptop.stressTest.dualGpuPowerW != null ? `${laptop.stressTest.dualGpuPowerW} W` : '暂无'}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">CPU 温度</span><span className="text-slate-800">{laptop.stressTest.dualCpuTempC != null ? `${laptop.stressTest.dualCpuTempC} °C` : '暂无'}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">GPU 温度</span><span className="text-slate-800">{laptop.stressTest.dualGpuTempC != null ? `${laptop.stressTest.dualGpuTempC} °C` : '暂无'}</span></div>
               </div>
             </div>
           </div>
           {laptop.stressTest.note && (
-            <div className="border-t border-slate-100 px-4 py-2 text-xs text-slate-400">
-              {laptop.stressTest.note}
-            </div>
+            <div className="border-t border-slate-100 px-4 py-2 text-xs text-slate-400">{laptop.stressTest.note}</div>
           )}
         </div>
       )}

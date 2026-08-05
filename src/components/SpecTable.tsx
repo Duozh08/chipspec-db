@@ -65,12 +65,15 @@ export default function SpecTable({ chip }: { chip: Chip }) {
         规格参数
       </div>
       <dl className="divide-y divide-slate-100">
-        {SPEC_ROWS.map((row) => (
-          <div key={row.label} className="grid grid-cols-[8.5rem_1fr] gap-4 px-4 py-2.5 text-sm">
-            <dt className="text-slate-500">{row.label}</dt>
-            <dd className="text-slate-800">{row.value(chip)}</dd>
-          </div>
-        ))}
+        {SPEC_ROWS.map((row) => {
+          const isDieDims = row.label === 'Die 长×宽';
+          return (
+            <div key={row.label} className="grid grid-cols-[8.5rem_1fr] gap-4 px-4 py-2.5 text-sm">
+              <dt className={`text-slate-500 ${isDieDims ? 'font-bold text-red-600' : ''}`}>{row.label}</dt>
+              <dd className={`text-slate-800 ${isDieDims ? 'font-bold text-red-600' : ''}`}>{row.value(chip)}</dd>
+            </div>
+          );
+        })}
       </dl>
     </div>
   );

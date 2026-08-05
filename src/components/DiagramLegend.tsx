@@ -60,7 +60,7 @@ export function DieBreakdown({ chip }: { chip: Chip }) {
               </div>
               <div className="mt-1 grid grid-cols-2 gap-x-6 gap-y-0.5 text-xs text-slate-500 sm:grid-cols-4">
                 <span>面积：{fmtArea(d.areaMm2)}</span>
-                <span>长×宽：{fmtDieDims(d)}</span>
+                <span className="font-bold text-red-600">长×宽：{fmtDieDims(d)}</span>
                 <span>制程：{d.process ?? '暂无数据'}</span>
                 <span>晶体管：{fmtTransistors(d.transistorsMillions)}</span>
               </div>
