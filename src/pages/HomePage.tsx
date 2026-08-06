@@ -149,20 +149,6 @@ export default function HomePage() {
       {/* 三大模块 */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Link
-          to="/browse"
-          className="group rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-blue-300 hover:shadow-md"
-        >
-          <div className="mb-3 text-3xl">📊</div>
-          <h3 className="font-semibold text-slate-800 group-hover:text-blue-600">芯片规格</h3>
-          <p className="mt-1 text-sm text-slate-500">
-            Intel / AMD / NVIDIA 桌面端 & 移动端处理器与显卡规格
-          </p>
-          <span className="mt-2 inline-block text-xs text-blue-500 opacity-0 transition group-hover:opacity-100">
-            浏览 {allChips.length} 颗 →
-          </span>
-        </Link>
-
-        <Link
           to="/laptops"
           className="group rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-blue-300 hover:shadow-md"
         >
@@ -173,6 +159,20 @@ export default function HomePage() {
           </p>
           <span className="mt-2 inline-block text-xs text-blue-500 opacity-0 transition group-hover:opacity-100">
             浏览 {allLaptops.length} 款 →
+          </span>
+        </Link>
+
+        <Link
+          to="/browse"
+          className="group rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-blue-300 hover:shadow-md"
+        >
+          <div className="mb-3 text-3xl">📊</div>
+          <h3 className="font-semibold text-slate-800 group-hover:text-blue-600">芯片规格</h3>
+          <p className="mt-1 text-sm text-slate-500">
+            Intel / AMD / NVIDIA 桌面端 & 移动端处理器与显卡规格
+          </p>
+          <span className="mt-2 inline-block text-xs text-blue-500 opacity-0 transition group-hover:opacity-100">
+            浏览 {allChips.length} 颗 →
           </span>
         </Link>
 
