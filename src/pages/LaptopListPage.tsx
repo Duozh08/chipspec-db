@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { allLaptops } from '../data/laptops';
+import { stressTests } from '../data/stress-tests';
 import { LAPTOP_BRAND_LABELS, cpuPlatform } from '../data/types';
 import type { LaptopBrand } from '../data/types';
 import ScrollTopButton from '../components/ScrollTopButton';
@@ -186,6 +187,7 @@ export default function LaptopListPage() {
             const title = formatCardTitle(laptop);
             const cpuLabel = getCpuPlatformLabel(laptop.cpuOptions);
             const inFav = isFavorited(laptop.id);
+            const hasStress = !!stressTests[laptop.id];
             return (
               <Link
                 key={laptop.id}
@@ -216,11 +218,24 @@ export default function LaptopListPage() {
 
                 {/* 右侧内容区 */}
                 <div className="flex min-w-0 flex-1 flex-col p-3">
-                  {/* 左上角：名称型号 */}
+                  {/* 左上角：名称型号（有烤机数据的机型显示火焰图标） */}
                   <div className="pr-5">
-                    <h3 className="text-sm font-semibold leading-tight text-slate-800 group-hover:text-blue-600">
-                      {title}
-                    </h3>
+                    <div className="flex items-start gap-1">
+                      <h3 className="min-w-0 flex-1 text-sm font-semibold leading-tight text-slate-800 group-hover:text-blue-600">
+                        {title}
+                      </h3>
+                      {hasStress && (
+                        <span
+                          className="mt-0.5 shrink-0"
+                          title="该机型有第三方烤机实测数据（单烤/双烤功耗温度）"
+                          aria-label="有烤机实测数据"
+                        >
+                          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 text-orange-500" fill="currentColor">
+                            <path d="M8 15c-2.8 0-4.8-1.8-4.8-4.4 0-1.7.8-3 1.9-4.5C6.2 4.7 7.4 3 7.5 1.2c2.6 1.6 4 3.9 4 6.1 0 1.6-.7 2.7-1.5 3.6-.6.7-1 1.2-1.2 1.8.2-.1.4-.2.6-.4.8-.7 1.5-1.5 2-2.5.5 1 .8 2 .8 3 0 1-1.7 2.2-4.2 2.2z" />
+                          </svg>
+                        </span>
+                      )}
+                    </div>
                     <p className="mt-0.5 text-xs text-slate-400">{laptop.model}</p>
                   </div>
 
