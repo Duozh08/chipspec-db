@@ -183,9 +183,33 @@ const SEED_POSTS: Post[] = [
   },
 ];
 
-/** 社区公告（渲染在列表顶部） */
-const NOTICE =
-  '📢 社区规范：发帖请选择正确分类；求助帖请尽量描述故障现象、测量数据和已做排查，方便他人快速定位；求助得到解决后请回帖反馈并标记「已解决」，帮助后来的朋友。';
+/** 社区公告（可编辑、支持多条；存储在 localStorage） */
+const ANNOUNCEMENTS_KEY = 'chipspec-repair-announcements';
+const DEFAULT_ANNOUNCEMENTS = [
+  '📢 社区规范：发帖请选择正确分类；求助帖请尽量描述故障现象、测量数据和已做排查，方便他人快速定位；求助得到解决后请回帖反馈并标记「已解决」，帮助后来的朋友。',
+  '📌 欢迎来到刘大师兄笔记本维修社区：每天分享芯片级维修案例，交流拆机、植球、BGA、电路维修经验。关注抖音/B站同名账号获取更多视频教程。',
+];
+
+function loadAnnouncements(): string[] {
+  try {
+    const raw = localStorage.getItem(ANNOUNCEMENTS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed.filter((a) => typeof a === 'string' && a.trim());
+    }
+  } catch {
+    /* ignore */
+  }
+  return DEFAULT_ANNOUNCEMENTS;
+}
+
+function saveAnnouncements(items: string[]) {
+  try {
+    localStorage.setItem(ANNOUNCEMENTS_KEY, JSON.stringify(items));
+  } catch {
+    /* ignore */
+  }
+}
 
 function formatNumber(n: number): string {
   if (n >= 10000) return `${(n / 10000).toFixed(1)}万`;
@@ -195,12 +219,21 @@ function formatNumber(n: number): string {
 
 export default function RepairPage() {
   const [posts, setPosts] = useState<Post[]>(loadPosts);
+  const [announcements, setAnnouncements] = useState<string[]>(loadAnnouncements);
+  const [editingNotice, setEditingNotice] = useState(false);
   const [view, setView] = useState<'list' | 'detail' | 'editor'>('list');
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [filterCategory, setFilterCategory] = useState('');
   const [sortKey, setSortKey] = useState<'latest' | 'hot' | 'replies' | 'likes'>('latest');
   const [query, setQuery] = useState('');
   const [likedIds, setLikedIds] = useState<Record<string, true>>(loadLikedIds);
+
+  const handleSaveAnnouncements = (items: string[]) => {
+    const cleaned = items.map((s) => s.trim()).filter(Boolean);
+    setAnnouncements(cleaned.length > 0 ? cleaned : DEFAULT_ANNOUNCEMENTS);
+    saveAnnouncements(cleaned.length > 0 ? cleaned : DEFAULT_ANNOUNCEMENTS);
+    setEditingNotice(false);
+  };
 
   useEffect(() => {
     if (posts.length === 0) {
@@ -345,11 +378,16 @@ export default function RepairPage() {
             ))}
           </div>
 
-          {/* 公告 */}
-          <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            <span className="text-base leading-5">📢</span>
-            <span className="leading-6">{NOTICE}</span>
-          </div>
+          {/* 公告（可编辑，多条自动轮播） */}
+          {editingNotice ? (
+            <NoticeEditor
+              items={announcements}
+              onSave={handleSaveAnnouncements}
+              onCancel={() => setEditingNotice(false)}
+            />
+          ) : (
+            <NoticeBoard items={announcements} onEdit={() => setEditingNotice(true)} />
+          )}
 
           {/* 分类筛选 */}
           <div className="flex flex-wrap gap-2">
@@ -1013,6 +1051,147 @@ function PostEditor({ onSubmit, onCancel }: { onSubmit: (post: Post) => void; on
         <p className="mt-2 text-xs text-slate-400">
           提示：支持图片（≤10MB）、视频（≤50MB）、附件（≤20MB，可多选），附件存储在浏览器本地数据库（IndexedDB，上限 200MB），删除帖子时附件自动清理。也可点击「⊞ 表格」或从 Excel / 网页复制表格粘贴。
         </p>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// 公告栏（单条静态显示；多条自动轮播 + 可编辑）
+// ============================================================
+function NoticeBoard({ items, onEdit }: { items: string[]; onEdit: () => void }) {
+  const [idx, setIdx] = useState(0);
+  const [fade, setFade] = useState(true);
+
+  const count = items.length;
+
+  // 多条公告时每 4 秒轮播一条（淡入淡出切换）
+  useEffect(() => {
+    if (count <= 1) return;
+    const timer = setInterval(() => {
+      setFade(false);
+      setTimeout(() => {
+        setIdx((i) => (i + 1) % count);
+        setFade(true);
+      }, 300);
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [count]);
+
+  if (count === 0) return null;
+
+  const current = items[idx] ?? items[0];
+
+  return (
+    <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+      <span className="shrink-0 text-base leading-5">📢</span>
+      <div className="min-w-0 flex-1">
+        <div className={`leading-6 transition-opacity duration-300 ${fade ? 'opacity-100' : 'opacity-0'}`} key={idx}>
+          {current}
+        </div>
+        {count > 1 && (
+          <div className="mt-1.5 flex items-center gap-1.5">
+            <span className="text-[10px] text-amber-500">
+              {idx + 1} / {count}
+            </span>
+            <span className="flex gap-1">
+              {items.map((_, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => {
+                    setFade(false);
+                    setTimeout(() => {
+                      setIdx(i);
+                      setFade(true);
+                    }, 200);
+                  }}
+                  aria-label={`查看第 ${i + 1} 条公告`}
+                  className={`h-1.5 rounded-full transition-all ${i === idx ? 'w-4 bg-amber-500' : 'w-1.5 bg-amber-300 hover:bg-amber-400'}`}
+                />
+              ))}
+            </span>
+          </div>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={onEdit}
+        title="编辑公告"
+        className="shrink-0 rounded-md border border-amber-300 bg-amber-100 px-2 py-0.5 text-xs text-amber-700 transition hover:bg-amber-200"
+      >
+        ✎ 编辑
+      </button>
+    </div>
+  );
+}
+
+/** 公告编辑器：多条文本框，支持增删改 */
+function NoticeEditor({
+  items,
+  onSave,
+  onCancel,
+}: {
+  items: string[];
+  onSave: (items: string[]) => void;
+  onCancel: () => void;
+}) {
+  const [draft, setDraft] = useState<string[]>(items.length > 0 ? items : ['']);
+
+  const update = (i: number, value: string) => {
+    setDraft((prev) => prev.map((s, idx) => (idx === i ? value : s)));
+  };
+  const add = () => setDraft((prev) => [...prev, '']);
+  const remove = (i: number) => {
+    setDraft((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev));
+  };
+
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-sm font-semibold text-amber-800">📢 编辑公告（多条将自动轮播显示）</span>
+        <button type="button" onClick={add} className="rounded-md border border-amber-300 bg-amber-100 px-2 py-0.5 text-xs text-amber-700 hover:bg-amber-200">
+          ＋ 添加公告
+        </button>
+      </div>
+      <div className="space-y-2">
+        {draft.map((text, i) => (
+          <div key={i} className="flex items-start gap-2">
+            <span className="mt-2 shrink-0 text-xs font-medium text-amber-600">{i + 1}</span>
+            <textarea
+              value={text}
+              onChange={(e) => update(i, e.target.value)}
+              rows={2}
+              placeholder={`请输入第 ${i + 1} 条公告内容…`}
+              className="min-w-0 flex-1 rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm text-amber-900 outline-none focus:border-amber-500"
+            />
+            <button
+              type="button"
+              onClick={() => remove(i)}
+              disabled={draft.length <= 1}
+              title="删除该条公告"
+              className="mt-1.5 shrink-0 rounded-md border border-amber-300 bg-amber-100 px-2 py-1 text-xs text-amber-700 hover:bg-amber-200 disabled:opacity-40"
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+      </div>
+      <div className="mt-3 flex items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+        >
+          取消
+        </button>
+        <button
+          type="button"
+          onClick={() => onSave(draft)}
+          className="rounded-lg bg-amber-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-amber-700"
+        >
+          保存公告
+        </button>
       </div>
     </div>
   );
