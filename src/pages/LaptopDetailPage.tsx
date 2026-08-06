@@ -175,43 +175,49 @@ export default function LaptopDetailPage() {
       </div>
 
       {/* 烤机测试（v3 历史实测数据恢复；按型号匹配，部分机型无数据） */}
-      {stress && (
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-          <div className="border-b border-slate-100 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700">
-            烤机测试数据
-          </div>
-          <div className="grid divide-y divide-slate-100 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-            <div className="p-4">
-              <div className="mb-2 text-xs font-medium text-slate-500">单烤 CPU</div>
-              <div className="space-y-1 text-sm">
-                <div className="flex justify-between"><span className="text-slate-500">功耗</span><span className="text-slate-800">{stress.cpuPowerW != null ? `${stress.cpuPowerW} W` : '暂无'}</span></div>
-                <div className="flex justify-between"><span className="text-slate-500">温度</span><span className="text-slate-800">{stress.cpuTempC != null ? `${stress.cpuTempC} °C` : '暂无'}</span></div>
-                <div className="flex justify-between"><span className="text-slate-500">频率</span><span className="text-slate-800">{stress.cpuFreqGHz != null ? `${stress.cpuFreqGHz} GHz` : '暂无'}</span></div>
-              </div>
-            </div>
-            <div className="p-4">
-              <div className="mb-2 text-xs font-medium text-slate-500">单烤 GPU</div>
-              <div className="space-y-1 text-sm">
-                <div className="flex justify-between"><span className="text-slate-500">功耗</span><span className="text-slate-800">{stress.gpuPowerW != null ? `${stress.gpuPowerW} W` : '暂无'}</span></div>
-                <div className="flex justify-between"><span className="text-slate-500">温度</span><span className="text-slate-800">{stress.gpuTempC != null ? `${stress.gpuTempC} °C` : '暂无'}</span></div>
-                <div className="flex justify-between"><span className="text-slate-500">频率</span><span className="text-slate-800">{stress.gpuFreqMHz != null ? `${stress.gpuFreqMHz} MHz` : '暂无'}</span></div>
-              </div>
-            </div>
-            <div className="p-4">
-              <div className="mb-2 text-xs font-medium text-slate-500">双烤</div>
-              <div className="space-y-1 text-sm">
-                <div className="flex justify-between"><span className="text-slate-500">CPU 功耗</span><span className="text-slate-800">{stress.dualCpuPowerW != null ? `${stress.dualCpuPowerW} W` : '暂无'}</span></div>
-                <div className="flex justify-between"><span className="text-slate-500">GPU 功耗</span><span className="text-slate-800">{stress.dualGpuPowerW != null ? `${stress.dualGpuPowerW} W` : '暂无'}</span></div>
-                <div className="flex justify-between"><span className="text-slate-500">CPU 温度</span><span className="text-slate-800">{stress.dualCpuTempC != null ? `${stress.dualCpuTempC} °C` : '暂无'}</span></div>
-                <div className="flex justify-between"><span className="text-slate-500">GPU 温度</span><span className="text-slate-800">{stress.dualGpuTempC != null ? `${stress.dualGpuTempC} °C` : '暂无'}</span></div>
-              </div>
-            </div>
-          </div>
-          {stress.note && (
-            <div className="border-t border-slate-100 px-4 py-2 text-xs text-slate-400">{stress.note}</div>
-          )}
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="border-b border-slate-100 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700">
+          烤机测试数据
         </div>
-      )}
+        {stress ? (
+          <>
+            <div className="grid divide-y divide-slate-100 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+              <div className="p-4">
+                <div className="mb-2 text-xs font-medium text-slate-500">单烤 CPU</div>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between"><span className="text-slate-500">功耗</span><span className="text-slate-800">{stress.cpuPowerW != null ? `${stress.cpuPowerW} W` : '暂无'}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">温度</span><span className="text-slate-800">{stress.cpuTempC != null ? `${stress.cpuTempC} °C` : '暂无'}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">频率</span><span className="text-slate-800">{stress.cpuFreqGHz != null ? `${stress.cpuFreqGHz} GHz` : '暂无'}</span></div>
+                </div>
+              </div>
+              <div className="p-4">
+                <div className="mb-2 text-xs font-medium text-slate-500">单烤 GPU</div>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between"><span className="text-slate-500">功耗</span><span className="text-slate-800">{stress.gpuPowerW != null ? `${stress.gpuPowerW} W` : '暂无'}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">温度</span><span className="text-slate-800">{stress.gpuTempC != null ? `${stress.gpuTempC} °C` : '暂无'}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">频率</span><span className="text-slate-800">{stress.gpuFreqMHz != null ? `${stress.gpuFreqMHz} MHz` : '暂无'}</span></div>
+                </div>
+              </div>
+              <div className="p-4">
+                <div className="mb-2 text-xs font-medium text-slate-500">双烤</div>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between"><span className="text-slate-500">CPU 功耗</span><span className="text-slate-800">{stress.dualCpuPowerW != null ? `${stress.dualCpuPowerW} W` : '暂无'}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">GPU 功耗</span><span className="text-slate-800">{stress.dualGpuPowerW != null ? `${stress.dualGpuPowerW} W` : '暂无'}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">CPU 温度</span><span className="text-slate-800">{stress.dualCpuTempC != null ? `${stress.dualCpuTempC} °C` : '暂无'}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">GPU 温度</span><span className="text-slate-800">{stress.dualGpuTempC != null ? `${stress.dualGpuTempC} °C` : '暂无'}</span></div>
+                </div>
+              </div>
+            </div>
+            {stress.note && (
+              <div className="border-t border-slate-100 px-4 py-2 text-xs text-slate-400">{stress.note}</div>
+            )}
+          </>
+        ) : (
+          <p className="px-4 py-8 text-center text-sm text-slate-400">
+            暂无该机型的第三方烤机实测数据（数据来源：笔吧评测室等评测，当前已收录 92 款热门机型的单烤/双烤数据）
+          </p>
+        )}
+      </div>
 
       {/* 来源 */}
       {laptop.sources.length > 0 && (

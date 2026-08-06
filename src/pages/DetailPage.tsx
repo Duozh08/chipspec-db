@@ -106,7 +106,7 @@ export default function DetailPage() {
         {/* 左列：示意图 + 图例 + 速览 */}
         <div className="flex flex-col gap-3">
           <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <ChipDiagram chip={chip} variant="full" />
+            <ChipDiagram chip={chip} variant="full" unified />
           </div>
           <DiagramLegend chip={chip} />
 
@@ -198,11 +198,11 @@ export default function DetailPage() {
         </div>
       </div>
 
-      {/* Die 明细 + 同代际/同品牌芯片（等宽两列，标题栏样式统一） */}
-      <div className="grid items-stretch gap-5 lg:grid-cols-2">
+      {/* Die 明细 + 同代际/同品牌芯片（与上方同列宽，左右边界对齐） */}
+      <div className="grid items-stretch gap-5 lg:grid-cols-[auto_1fr]">
         <DieBreakdown chip={chip} />
         {related.length > 0 && (
-          <div className="flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-100 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700">
               {relatedTitle}
             </div>
