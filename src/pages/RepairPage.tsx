@@ -1,7 +1,8 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 
 const STORAGE_KEY = 'chipspec-repair-posts';
+const LIKES_KEY = 'chipspec-repair-likes';
 
 interface Post {
   id: string;
@@ -14,6 +15,12 @@ interface Post {
   replies: Reply[];
   /** 置顶标记 */
   pinned?: boolean;
+  /** 精华帖标记 */
+  essence?: boolean;
+  /** 已解决标记（求助类帖子） */
+  solved?: boolean;
+  /** 点赞数 */
+  likes?: number;
 }
 
 interface Reply {
@@ -21,9 +28,13 @@ interface Reply {
   author: string;
   content: string;
   createdAt: string;
+  likes?: number;
 }
 
 const CATEGORIES = ['维修经验', '故障排查', '工具推荐', '求助提问', '技术交流', '配件交易'];
+
+const TABLE_STYLE =
+  '[&_table]:w-full [&_table]:border-collapse [&_table]:my-2 [&_th]:border [&_th]:border-slate-300 [&_th]:bg-slate-50 [&_th]:px-2 [&_th]:py-1 [&_th]:font-semibold [&_td]:border [&_td]:border-slate-300 [&_td]:px-2 [&_td]:py-1 [&_td]:align-middle [&_tr]:bg-white [&_tr:nth-child(odd)]:bg-slate-50/50';
 
 function loadPosts(): Post[] {
   try {
@@ -42,6 +53,23 @@ function savePosts(posts: Post[]) {
   }
 }
 
+function loadLikedIds(): Record<string, true> {
+  try {
+    const raw = localStorage.getItem(LIKES_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveLikedIds(ids: Record<string, true>) {
+  try {
+    localStorage.setItem(LIKES_KEY, JSON.stringify(ids));
+  } catch {
+    /* ignore */
+  }
+}
+
 function formatTime(iso: string): string {
   const d = new Date(iso);
   const now = new Date();
@@ -53,57 +81,176 @@ function formatTime(iso: string): string {
   return d.toLocaleDateString('zh-CN');
 }
 
-// Sample seed posts
 const SEED_POSTS: Post[] = [
   {
     id: 'seed-1',
     title: '【维修经验】RTX 3060 显卡花屏维修全过程分享',
     author: '维修老张',
     category: '维修经验',
-    content: '<p>分享一块 RTX 3060 花屏的维修过程。</p><p><strong>故障现象：</strong>开机花屏，进入系统后满屏彩色条纹。</p><p><strong>排查过程：</strong></p><ol><li>先检查显存供电，1.35V 正常</li><li>用热风枪加热显存区域，花屏有变化 → 判定显存虚焊</li><li>重新植锡焊接显存后恢复正常</li></ol><p><strong>总结：</strong>RTX 30 系列显存虚焊是常见故障，加热法可以快速定位。</p>',
+    content: '<p>分享一块 RTX 3060 花屏的维修过程。</p><p><strong>故障现象：</strong>开机花屏，进入系统后满屏彩色条纹。</p><p><strong>排查过程：</strong></p><ol><li>先测显存供电，1.35V 正常</li><li>用热风枪加热显存区域，花屏有变化 → 判定显存虚焊</li><li>重新植锡焊接显存后恢复正常</li></ol><p><strong>总结：</strong>RTX 30 系列显存虚焊是常见故障，加热法可以快速定位。</p>',
     createdAt: new Date(Date.now() - 86400000 * 3).toISOString(),
     views: 1280,
+    essence: true,
+    likes: 45,
     replies: [
-      { id: 'r1', author: '小白学维修', content: '感谢分享！正好遇到一样的问题', createdAt: new Date(Date.now() - 86400000 * 2).toISOString() },
+      { id: 'r1', author: '小白学维修', content: '感谢分享！正好遇到一样的问题', createdAt: new Date(Date.now() - 86400000 * 2).toISOString(), likes: 3 },
+      { id: 'r2', author: '芯片级维修', content: '补充一点：加热法定位时温度控制在 220℃ 左右比较安全，避免吹爆周边的贴片电容。', createdAt: new Date(Date.now() - 86400000 * 1).toISOString(), likes: 12 },
     ],
   },
   {
     id: 'seed-2',
-    title: '【故障排查】笔记本 CPU 供电短路维修思路',
+    title: '【故障排查】笔记本 CPU 供电短路维修思路（已解决）',
     author: '芯片级维修',
     category: '故障排查',
-    content: '<p>笔记本 CPU 供电短路是比较常见的故障，分享一下排查思路：</p><p>1. 先测 CPU 供电电感对地阻值，正常应在 20Ω 以上</p><p>2. 如果阻值偏低，断开 CPU 供电 MOS 管逐个排查</p><p>3. 常见原因是供电 MOS 管击穿或 CPU 本身短路</p><p>4. 更换 MOS 管后一定要测阻值正常再上电</p>',
+    content: '<p>笔记本 CPU 供电短路是比较常见的故障，分享一下排查思路：</p><ol><li>先测 CPU 供电电感对地阻值，正常应在 20Ω 以上</li><li>如果阻值偏低，断开 CPU 供电 MOS 管逐个排查</li><li>常见原因是供电 MOS 管击穿或 CPU 本身短路</li><li>更换 MOS 管后一定要测阻值正常再上电</li></ol><p><strong>本例最终结论：</strong>上管击穿，更换后阻值恢复正常，机器点亮。</p>',
     createdAt: new Date(Date.now() - 86400000 * 7).toISOString(),
     views: 856,
+    solved: true,
+    likes: 28,
+    replies: [
+      { id: 'r3', author: '笔记本维修工', content: '很有用的思路，收藏了', createdAt: new Date(Date.now() - 86400000 * 6).toISOString(), likes: 5 },
+    ],
+  },
+  {
+    id: 'seed-3',
+    title: '【求助提问】拯救者 Y9000P 2024 蓝屏重启，怀疑内存问题',
+    author: '阿凯不是凯',
+    category: '求助提问',
+    content: '<p>机器配置：i9-14900HX + RTX 4060，原装 16G 单条内存。</p><p><strong>故障现象：</strong>开机或游戏中偶发蓝屏（MEMORY_MANAGEMENT），重启后正常。</p><p><strong>已做的排查：</strong></p><ul><li>MemTest86 跑了 2 圈无报错</li><li>更新了 BIOS 到最新版</li><li>关掉 XMP 后故障频率降低但仍有</li></ul><p>怀疑是单通道内存带宽问题或内存插槽虚焊，求各位大佬指点排查方向。</p>',
+    createdAt: new Date(Date.now() - 86400000 * 2).toISOString(),
+    views: 342,
+    likes: 9,
+    replies: [
+      { id: 'r4', author: '维修老张', content: 'MEMORY_MANAGEMENT 蓝屏优先怀疑内存。建议换一条内存测试，如果手上没有，把原装内存换到另一个插槽试试——插槽接触不良也会偶发。', createdAt: new Date(Date.now() - 86400000 * 1).toISOString(), likes: 8 },
+    ],
+  },
+  {
+    id: 'seed-4',
+    title: '【工具推荐】风枪焊台怎么选？300-800 元档位对比',
+    author: '工具控老李',
+    category: '工具推荐',
+    content: '<p>给刚入行的朋友整理一下常用维修工具的选择，避免踩坑。</p><p><strong>风枪：</strong></p><table><tbody><tr><th>价位</th><th>推荐型号</th><th>特点</th></tr><tr><td>200-300</td><td>快克 857DW+</td><td>入门够用，温度波动 ±10℃</td></tr><tr><td>400-600</td><td>快克 2008</td><td>曲线控温，焊 CPU 更稳</td></tr><tr><td>800+</td><td>奥科 AT850</td><td>专业级，气流稳定</td></tr></tbody></table><p><strong>焊台：</strong>白菜白光 936 就够练手；进阶建议 T12 高频焊台（升温快、回温好）。</p><p><strong>其他必备：</strong>恒温烙铁头、助焊剂、吸锡带、植锡网、放大镜台灯。</p>',
+    createdAt: new Date(Date.now() - 86400000 * 12).toISOString(),
+    views: 2105,
+    essence: true,
+    likes: 67,
+    replies: [
+      { id: 'r5', author: '新手小王', content: '收藏了，正打算入坑，非常有帮助！', createdAt: new Date(Date.now() - 86400000 * 10).toISOString(), likes: 2 },
+      { id: 'r6', author: '工具控老李', content: '补充：新手不建议一上来买热风枪拆 BGA，先用旧显卡练手再说。', createdAt: new Date(Date.now() - 86400000 * 9).toISOString(), likes: 15 },
+    ],
+  },
+  {
+    id: 'seed-5',
+    title: '【技术交流】BGA 植球温度曲线参考（锡球 0.5mm）',
+    author: '老冯修板',
+    category: '技术交流',
+    content: '<p>分享一套常用的 BGA 植球回流温度曲线，供大家参考调整：</p><table><tbody><tr><th>阶段</th><th>温度</th><th>时间</th></tr><tr><td>预热</td><td>120-150℃</td><td>60-90s</td></tr><tr><td>均热</td><td>150-180℃</td><td>60s</td></tr><tr><td>助焊剂活化</td><td>180-217℃</td><td>30s</td></tr><tr><td>回流峰值</td><td>235-245℃</td><td>10-20s</td></tr><tr><td>冷却</td><td>自然降温</td><td>—</td></tr></tbody></table><p><strong>注意事项：</strong>峰值温度不宜超过 250℃，否则芯片可能内部损伤；无铅锡球（SAC305）峰值建议 240-245℃。</p>',
+    createdAt: new Date(Date.now() - 86400000 * 20).toISOString(),
+    views: 1876,
+    essence: true,
+    likes: 54,
+    replies: [
+      { id: 'r7', author: '小白学维修', content: '正好在学植球，这条曲线帮大忙了', createdAt: new Date(Date.now() - 86400000 * 18).toISOString(), likes: 6 },
+    ],
+  },
+  {
+    id: 'seed-6',
+    title: '【维修经验】联想拯救者 Y9000P 风扇异响更换教程',
+    author: '笔记本维修工',
+    category: '维修经验',
+    content: '<p>拯救者 Y9000P 用一年后风扇异响（哒哒声）比较常见，多半是轴承磨损。</p><p><strong>更换步骤：</strong></p><ol><li>关机断电，拆下 D 面全部螺丝（注意脚垫下有隐藏螺丝）</li><li>断开电池排线</li><li>取下风扇固定螺丝，拔下风扇供电线</li><li>清洁出风口积灰，换上新风扇（左右风扇型号不同，注意区分）</li><li>装回后先不盖后盖，开机测试风扇是否正常</li></ol><p><strong>注意事项：</strong>原装风扇型号可在拆下后看标签；副厂风扇便宜但噪音可能更大，建议优先原装。</p>',
+    createdAt: new Date(Date.now() - 86400000 * 5).toISOString(),
+    views: 654,
+    likes: 21,
+    replies: [],
+  },
+  {
+    id: 'seed-7',
+    title: '【配件交易】出两块料板 + 一套植锡工具（上海同城优先）',
+    author: '阿凯不是凯',
+    category: '配件交易',
+    content: '<p>清理工作室，出一些不用的配件：</p><ul><li>联想拯救者 Y7000 2021 料板一块（供电正常，显存虚焊拆过）</li><li>华硕天选 3 料板一块（不通电，练手用）</li><li>植锡网套装（0.3/0.5mm 各 5 张）+ 锡膏一管</li></ul><p>价格私聊，上海同城可自提，外地顺丰到付。有意的朋友评论区留言。</p>',
+    createdAt: new Date(Date.now() - 86400000 * 1).toISOString(),
+    views: 128,
+    likes: 2,
     replies: [],
   },
 ];
+
+/** 社区公告（渲染在列表顶部） */
+const NOTICE =
+  '📢 社区规范：发帖请选择正确分类；求助帖请尽量描述故障现象、测量数据和已做排查，方便他人快速定位；求助得到解决后请回帖反馈并标记「已解决」，帮助后来的朋友。';
+
+function formatNumber(n: number): string {
+  if (n >= 10000) return `${(n / 10000).toFixed(1)}万`;
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  return String(n);
+}
 
 export default function RepairPage() {
   const [posts, setPosts] = useState<Post[]>(loadPosts);
   const [view, setView] = useState<'list' | 'detail' | 'editor'>('list');
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [filterCategory, setFilterCategory] = useState('');
+  const [sortKey, setSortKey] = useState<'latest' | 'hot' | 'replies' | 'likes'>('latest');
+  const [query, setQuery] = useState('');
+  const [likedIds, setLikedIds] = useState<Record<string, true>>(loadLikedIds);
 
   useEffect(() => {
-    // Seed initial posts if empty
     if (posts.length === 0) {
       setPosts(SEED_POSTS);
       savePosts(SEED_POSTS);
     }
   }, []);
 
-  const filteredPosts = (filterCategory
-    ? posts.filter((p) => p.category === filterCategory)
-    : posts
-  ).slice().sort((a, b) => {
-    // 置顶优先，其次按时间倒序
-    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-  });
+  // 更新 posts 并持久化（同时同步 selectedPost）
+  const updatePosts = useCallback((updater: (prev: Post[]) => Post[]) => {
+    setPosts((prev) => {
+      const next = updater(prev);
+      savePosts(next);
+      setSelectedPost((sel) => (sel ? next.find((p) => p.id === sel.id) ?? null : sel));
+      return next;
+    });
+  }, []);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    let list = filterCategory ? posts.filter((p) => p.category === filterCategory) : posts;
+    if (q) {
+      list = list.filter(
+        (p) =>
+          p.title.toLowerCase().includes(q) ||
+          p.content.toLowerCase().includes(q) ||
+          p.author.toLowerCase().includes(q) ||
+          p.category.includes(q)
+      );
+    }
+    const lastReply = (p: Post) => p.replies[p.replies.length - 1]?.createdAt ?? p.createdAt;
+    return [...list].sort((a, b) => {
+      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+      switch (sortKey) {
+        case 'hot':
+          return b.views * 2 + b.replies.length * 5 + (b.likes ?? 0) * 3 - (a.views * 2 + a.replies.length * 5 + (a.likes ?? 0) * 3);
+        case 'replies':
+          return b.replies.length - a.replies.length;
+        case 'likes':
+          return (b.likes ?? 0) - (a.likes ?? 0);
+        default:
+          return new Date(lastReply(b)).getTime() - new Date(lastReply(a)).getTime();
+      }
+    });
+  }, [posts, filterCategory, sortKey, query]);
+
+  // 社区统计
+  const stats = useMemo(() => {
+    const replies = posts.reduce((s, p) => s + p.replies.length, 0);
+    const views = posts.reduce((s, p) => s + p.views, 0);
+    const likes = posts.reduce((s, p) => s + (p.likes ?? 0), 0);
+    return { posts: posts.length, replies, views, likes };
+  }, [posts]);
 
   const handleViewPost = (post: Post) => {
-    const updated = posts.map((p) => p.id === post.id ? { ...p, views: p.views + 1 } : p);
+    const updated = posts.map((p) => (p.id === post.id ? { ...p, views: p.views + 1 } : p));
     setPosts(updated);
     savePosts(updated);
     setSelectedPost(updated.find((p) => p.id === post.id) ?? post);
@@ -118,29 +265,32 @@ export default function RepairPage() {
   };
 
   const handleReply = (postId: string, reply: Reply) => {
-    const updated = posts.map((p) =>
-      p.id === postId ? { ...p, replies: [...p.replies, reply] } : p
-    );
-    setPosts(updated);
-    savePosts(updated);
-    setSelectedPost(updated.find((p) => p.id === postId) ?? null);
+    updatePosts((prev) => prev.map((p) => (p.id === postId ? { ...p, replies: [...p.replies, reply] } : p)));
   };
 
   const handleDeletePost = (postId: string) => {
-    const updated = posts.filter((p) => p.id !== postId);
-    setPosts(updated);
-    savePosts(updated);
+    updatePosts((prev) => prev.filter((p) => p.id !== postId));
     setView('list');
   };
 
   const handleTogglePin = (postId: string) => {
-    const updated = posts.map((p) =>
-      p.id === postId ? { ...p, pinned: !p.pinned } : p
-    );
-    setPosts(updated);
-    savePosts(updated);
-    setSelectedPost(updated.find((p) => p.id === postId) ?? null);
+    updatePosts((prev) => prev.map((p) => (p.id === postId ? { ...p, pinned: !p.pinned } : p)));
   };
+
+  const handleToggleSolved = (postId: string) => {
+    updatePosts((prev) => prev.map((p) => (p.id === postId ? { ...p, solved: !p.solved } : p)));
+  };
+
+  /** 点赞（帖子或回复），同一用户同一对象只能点一次（本地记录） */
+  const handleLike = (targetId: string, updater: (p: Post) => Post) => {
+    if (likedIds[targetId]) return;
+    const next: Record<string, true> = { ...likedIds, [targetId]: true };
+    setLikedIds(next);
+    saveLikedIds(next);
+    updatePosts((prev) => prev.map((p) => (p.id === targetId || p.replies.some((r) => r.id === targetId) ? updater(p) : p)));
+  };
+
+  const isLiked = (id: string) => !!likedIds[id];
 
   return (
     <div className="space-y-4">
@@ -165,6 +315,27 @@ export default function RepairPage() {
 
       {view === 'list' && (
         <>
+          {/* 社区统计条 */}
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+            {[
+              { label: '主题帖', value: stats.posts },
+              { label: '回复总数', value: stats.replies },
+              { label: '累计浏览', value: stats.views },
+              { label: '累计点赞', value: stats.likes },
+            ].map((s) => (
+              <div key={s.label} className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-center shadow-sm">
+                <div className="text-lg font-bold text-slate-800">{formatNumber(s.value)}</div>
+                <div className="mt-0.5 text-xs text-slate-500">{s.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* 公告 */}
+          <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <span className="text-base leading-5">📢</span>
+            <span className="leading-6">{NOTICE}</span>
+          </div>
+
           {/* 分类筛选 */}
           <div className="flex flex-wrap gap-2">
             <button
@@ -188,42 +359,81 @@ export default function RepairPage() {
             ))}
           </div>
 
+          {/* 搜索 + 排序 */}
+          <div className="flex flex-wrap items-center gap-2.5 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+            <input
+              type="search"
+              placeholder="搜索标题 / 内容 / 作者…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="min-w-40 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-400 [&::-webkit-search-cancel-button]:hidden"
+            />
+            <select
+              value={sortKey}
+              onChange={(e) => setSortKey(e.target.value as typeof sortKey)}
+              className="appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-400"
+            >
+              <option value="latest">按最新回复</option>
+              <option value="hot">按最热</option>
+              <option value="replies">按回复最多</option>
+              <option value="likes">按点赞最多</option>
+            </select>
+            <span className="text-sm text-slate-400">共 {filtered.length} 帖</span>
+          </div>
+
           {/* 帖子列表 */}
           <div className="space-y-3">
-            {filteredPosts.length === 0 ? (
+            {filtered.length === 0 ? (
               <div className="rounded-xl border border-dashed border-slate-300 bg-white py-16 text-center text-slate-400">
-                暂无帖子，点击右上角发新帖
+                没有符合条件的帖子，点击右上角发新帖
               </div>
             ) : (
-              filteredPosts.map((post) => (
-                <div
-                  key={post.id}
-                  onClick={() => handleViewPost(post)}
-                  className="cursor-pointer rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-blue-300 hover:shadow"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600">
-                          {post.category}
-                        </span>
-                        {post.pinned && (
-                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
-                            📌 置顶
+              filtered.map((post) => {
+                const lastReply = post.replies[post.replies.length - 1];
+                return (
+                  <div
+                    key={post.id}
+                    onClick={() => handleViewPost(post)}
+                    className="cursor-pointer rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-blue-300 hover:shadow"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600">
+                            {post.category}
                           </span>
-                        )}
-                        <h3 className="font-semibold text-slate-800 hover:text-blue-600">{post.title}</h3>
+                          {post.pinned && (
+                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                              📌 置顶
+                            </span>
+                          )}
+                          {post.essence && (
+                            <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700">
+                              ✦ 精华
+                            </span>
+                          )}
+                          {post.solved && (
+                            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                              ✓ 已解决
+                            </span>
+                          )}
+                          <h3 className="font-semibold text-slate-800 hover:text-blue-600">{post.title}</h3>
+                        </div>
+                        <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400">
+                          <span>👤 {post.author}</span>
+                          <span>🕐 {formatTime(lastReply?.createdAt ?? post.createdAt)}</span>
+                          {post.replies.length > 0 && <span className="text-slate-500">最后回复：{lastReply?.author}</span>}
+                        </div>
                       </div>
-                      <div className="mt-1.5 flex items-center gap-4 text-xs text-slate-400">
-                        <span>👤 {post.author}</span>
-                        <span>🕐 {formatTime(post.createdAt)}</span>
-                        <span>👁 {post.views}</span>
+                      <div className="flex shrink-0 flex-col items-end gap-1 text-xs text-slate-400">
                         <span>💬 {post.replies.length}</span>
+                        <span>👁 {formatNumber(post.views)}</span>
+                        <span>👍 {post.likes ?? 0}</span>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </>
@@ -236,6 +446,9 @@ export default function RepairPage() {
           onReply={(reply) => handleReply(selectedPost.id, reply)}
           onDelete={() => handleDeletePost(selectedPost.id)}
           onTogglePin={() => handleTogglePin(selectedPost.id)}
+          onToggleSolved={() => handleToggleSolved(selectedPost.id)}
+          onLike={(targetId, updater) => handleLike(targetId, updater)}
+          isLiked={isLiked}
         />
       )}
 
@@ -255,12 +468,18 @@ function PostDetail({
   onReply,
   onDelete,
   onTogglePin,
+  onToggleSolved,
+  onLike,
+  isLiked,
 }: {
   post: Post;
   onBack: () => void;
   onReply: (reply: Reply) => void;
   onDelete: () => void;
   onTogglePin: () => void;
+  onToggleSolved: () => void;
+  onLike: (targetId: string, updater: (p: Post) => Post) => void;
+  isLiked: (id: string) => boolean;
 }) {
   const [replyText, setReplyText] = useState('');
   const [replyAuthor, setReplyAuthor] = useState('');
@@ -276,6 +495,13 @@ function PostDetail({
     setReplyText('');
   };
 
+  const likeReply = (reply: Reply) => {
+    onLike(reply.id, (p) => ({
+      ...p,
+      replies: p.replies.map((r) => (r.id === reply.id ? { ...r, likes: (r.likes ?? 0) + 1 } : r)),
+    }));
+  };
+
   return (
     <div className="space-y-4">
       <button onClick={onBack} className="inline-block text-sm text-slate-500 hover:text-blue-600">
@@ -288,10 +514,27 @@ function PostDetail({
           {post.pinned && (
             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">📌 置顶</span>
           )}
+          {post.essence && (
+            <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700">✦ 精华</span>
+          )}
+          {post.solved && (
+            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">✓ 已解决</span>
+          )}
         </div>
         <div className="mt-1 flex items-start justify-between gap-3">
           <h1 className="text-xl font-bold text-slate-900">{post.title}</h1>
           <div className="flex shrink-0 items-center gap-3">
+            {post.category === '求助提问' && (
+              <button
+                onClick={onToggleSolved}
+                title={post.solved ? '重新打开' : '标记为已解决'}
+                className={`text-xs transition ${
+                  post.solved ? 'text-emerald-600 hover:text-emerald-700' : 'text-slate-400 hover:text-emerald-600'
+                }`}
+              >
+                {post.solved ? '✓ 已解决（点击重开）' : '✓ 标记已解决'}
+              </button>
+            )}
             <button
               onClick={onTogglePin}
               title={post.pinned ? '取消置顶' : '置顶帖子'}
@@ -301,21 +544,30 @@ function PostDetail({
             >
               {post.pinned ? '📌 取消置顶' : '📌 置顶'}
             </button>
-            <button
-              onClick={onDelete}
-              className="text-xs text-red-400 hover:text-red-600"
-            >
+            <button onClick={onDelete} className="text-xs text-red-400 hover:text-red-600">
               🗑 删除
             </button>
           </div>
         </div>
-        <div className="mt-2 flex items-center gap-4 text-xs text-slate-400">
+        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400">
           <span>👤 {post.author}</span>
           <span>🕐 {formatTime(post.createdAt)}</span>
           <span>👁 {post.views} 次浏览</span>
+          <button
+            type="button"
+            onClick={() => onLike(post.id, (p) => ({ ...p, likes: (p.likes ?? 0) + 1 }))}
+            disabled={isLiked(post.id)}
+            className={`rounded-full border px-2 py-0.5 text-xs font-medium transition disabled:cursor-not-allowed ${
+              isLiked(post.id)
+                ? 'border-orange-300 bg-orange-50 text-orange-500'
+                : 'border-slate-200 text-slate-500 hover:border-orange-300 hover:text-orange-500'
+            }`}
+          >
+            👍 {post.likes ?? 0} {isLiked(post.id) ? '已赞' : '点赞'}
+          </button>
         </div>
         <div
-          className="mt-4 max-w-none text-sm leading-6 text-slate-700 [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_img]:max-w-full [&_img]:rounded-lg [&_table]:w-full [&_table]:border-collapse [&_table]:my-2 [&_th]:border [&_th]:border-slate-300 [&_th]:bg-slate-50 [&_th]:px-2 [&_th]:py-1 [&_th]:font-semibold [&_td]:border [&_td]:border-slate-300 [&_td]:px-2 [&_td]:py-1 [&_td]:align-middle [&_tr]:bg-white [&_tr:nth-child(odd)]:bg-slate-50/50"
+          className={`mt-4 max-w-none text-sm leading-6 text-slate-700 [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_img]:max-w-full [&_img]:rounded-lg ${TABLE_STYLE}`}
           dangerouslySetInnerHTML={{ __html: post.content }}
         />
       </div>
@@ -323,13 +575,33 @@ function PostDetail({
       {/* 回复列表 */}
       <div className="space-y-3">
         <div className="text-sm font-semibold text-slate-700">回复（{post.replies.length}）</div>
+        {post.replies.length === 0 && (
+          <div className="rounded-lg border border-dashed border-slate-200 bg-white py-8 text-center text-sm text-slate-400">
+            暂无回复，快来抢沙发～
+          </div>
+        )}
         {post.replies.map((reply) => (
           <div key={reply.id} className="rounded-lg border border-slate-200 bg-white p-3">
             <div className="flex items-center gap-2 text-xs text-slate-400">
               <span className="font-medium text-slate-600">👤 {reply.author}</span>
+              {reply.author === post.author && (
+                <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-600">楼主</span>
+              )}
               <span>🕐 {formatTime(reply.createdAt)}</span>
+              <button
+                type="button"
+                onClick={() => likeReply(reply)}
+                disabled={isLiked(reply.id)}
+                className={`ml-auto rounded-full border px-2 py-0.5 text-[11px] font-medium transition disabled:cursor-not-allowed ${
+                  isLiked(reply.id)
+                    ? 'border-orange-300 bg-orange-50 text-orange-500'
+                    : 'border-slate-200 text-slate-500 hover:border-orange-300 hover:text-orange-500'
+                }`}
+              >
+                👍 {reply.likes ?? 0}
+              </button>
             </div>
-            <p className="mt-1.5 text-sm text-slate-700">{reply.content}</p>
+            <p className="mt-1.5 whitespace-pre-wrap text-sm text-slate-700">{reply.content}</p>
           </div>
         ))}
       </div>
@@ -567,7 +839,7 @@ function PostEditor({ onSubmit, onCancel }: { onSubmit: (post: Post) => void; on
           contentEditable
           suppressContentEditableWarning
           onPaste={handlePaste}
-          className="min-h-[300px] rounded-lg border border-slate-300 p-3 text-sm outline-none focus:border-blue-400 [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_img]:max-w-full [&_img]:rounded-lg [&_table]:w-full [&_table]:border-collapse [&_table]:my-2 [&_th]:border [&_th]:border-slate-300 [&_th]:bg-slate-50 [&_th]:px-2 [&_th]:py-1 [&_th]:font-semibold [&_td]:border [&_td]:border-slate-300 [&_td]:px-2 [&_td]:py-1 [&_td]:align-middle [&_tr]:bg-white [&_tr:nth-child(odd)]:bg-slate-50/50"
+          className={`min-h-[300px] rounded-lg border border-slate-300 p-3 text-sm outline-none focus:border-blue-400 [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_img]:max-w-full [&_img]:rounded-lg ${TABLE_STYLE}`}
           data-placeholder="在此输入帖子内容…支持文字、图片、链接、表格等…（可直接从 Excel / 网页复制表格粘贴）"
         />
 
