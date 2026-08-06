@@ -144,19 +144,34 @@ export default function LaptopDetailPage() {
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {intelCpus.map((cpu, i) => {
                   const chipInfo = matchCpu(cpu);
-                  return (
-                    <div key={i} className="rounded-lg border border-blue-100 bg-blue-50/50 px-3 py-2">
-                      <div className="flex items-center gap-2">
-                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
-                          {i + 1}
-                        </span>
-                        <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700">{cpu}</span>
-                        {chipInfo && (
+                  const inner = (
+                    <>
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
+                        {i + 1}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700">{cpu}</span>
+                      {chipInfo && (
+                        <>
                           <span className="shrink-0 rounded bg-white/70 px-1.5 py-0.5 text-[10px] text-slate-500">
                             Die 长×宽 {dieDimsSummary(chipInfo)}
                           </span>
-                        )}
-                      </div>
+                          <span className="shrink-0 text-xs text-blue-500" aria-hidden>↗</span>
+                        </>
+                      )}
+                    </>
+                  );
+                  return chipInfo ? (
+                    <Link
+                      key={i}
+                      to={`/chip/${chipInfo.id}`}
+                      title={`查看 ${chipInfo.model} 芯片详情`}
+                      className="rounded-lg border border-blue-100 bg-blue-50/50 px-3 py-2 transition hover:border-blue-400 hover:bg-blue-100/60 hover:shadow-md"
+                    >
+                      <div className="flex items-center gap-2">{inner}</div>
+                    </Link>
+                  ) : (
+                    <div key={i} className="rounded-lg border border-blue-100 bg-blue-50/50 px-3 py-2">
+                      <div className="flex items-center gap-2">{inner}</div>
                     </div>
                   );
                 })}
@@ -173,19 +188,34 @@ export default function LaptopDetailPage() {
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {amdCpus.map((cpu, i) => {
                   const chipInfo = matchCpu(cpu);
-                  return (
-                    <div key={i} className="rounded-lg border border-red-100 bg-red-50/50 px-3 py-2">
-                      <div className="flex items-center gap-2">
-                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-red-600 text-xs font-bold text-white">
-                          {i + 1}
-                        </span>
-                        <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700">{cpu}</span>
-                        {chipInfo && (
+                  const inner = (
+                    <>
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-red-600 text-xs font-bold text-white">
+                        {i + 1}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700">{cpu}</span>
+                      {chipInfo && (
+                        <>
                           <span className="shrink-0 rounded bg-white/70 px-1.5 py-0.5 text-[10px] text-slate-500">
                             Die 长×宽 {dieDimsSummary(chipInfo)}
                           </span>
-                        )}
-                      </div>
+                          <span className="shrink-0 text-xs text-red-500" aria-hidden>↗</span>
+                        </>
+                      )}
+                    </>
+                  );
+                  return chipInfo ? (
+                    <Link
+                      key={i}
+                      to={`/chip/${chipInfo.id}`}
+                      title={`查看 ${chipInfo.model} 芯片详情`}
+                      className="rounded-lg border border-red-100 bg-red-50/50 px-3 py-2 transition hover:border-red-400 hover:bg-red-100/60 hover:shadow-md"
+                    >
+                      <div className="flex items-center gap-2">{inner}</div>
+                    </Link>
+                  ) : (
+                    <div key={i} className="rounded-lg border border-red-100 bg-red-50/50 px-3 py-2">
+                      <div className="flex items-center gap-2">{inner}</div>
                     </div>
                   );
                 })}
@@ -205,8 +235,8 @@ export default function LaptopDetailPage() {
             {laptop.gpuOptions.map((gpu, i) => {
               const power = parsePower(gpu);
               const chipInfo = matchGpu(gpu);
-              return (
-                <div key={i} className="rounded-lg border border-green-100 bg-green-50/50 px-3 py-2">
+              const inner = (
+                <>
                   <div className="flex items-center gap-2">
                     <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-green-600 text-xs font-bold text-white">
                       {i + 1}
@@ -219,10 +249,25 @@ export default function LaptopDetailPage() {
                     )}
                   </div>
                   {chipInfo && (
-                    <div className="mt-1 pl-8 text-[10px] text-slate-500">
-                      Die 长×宽 {dieDimsSummary(chipInfo)}
+                    <div className="mt-1 flex items-center gap-1.5 pl-8 text-[10px] text-slate-500">
+                      <span>Die 长×宽 {dieDimsSummary(chipInfo)}</span>
+                      <span className="text-green-600" aria-hidden>↗ 查看芯片</span>
                     </div>
                   )}
+                </>
+              );
+              return chipInfo ? (
+                <Link
+                  key={i}
+                  to={`/chip/${chipInfo.id}`}
+                  title={`查看 ${chipInfo.model} 芯片详情`}
+                  className="rounded-lg border border-green-100 bg-green-50/50 px-3 py-2 transition hover:border-green-400 hover:bg-green-100/60 hover:shadow-md"
+                >
+                  {inner}
+                </Link>
+              ) : (
+                <div key={i} className="rounded-lg border border-green-100 bg-green-50/50 px-3 py-2">
+                  {inner}
                 </div>
               );
             })}
