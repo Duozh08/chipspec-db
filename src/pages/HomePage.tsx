@@ -116,7 +116,7 @@ export default function HomePage() {
         </div>
         <div className="grid gap-3 sm:grid-cols-3">
           <a
-            href="https://www.douyin.com/user/MS4wLjABAAAA4D0P8CKTJtgKcLrWasR45sAGJpj7E6CIl76upgAu_STgccsSXDasACYNo_LxLDcR"
+            href="https://www.douyin.com/user/MS4wLjABAAAAXxwzsmWiioeygg3wmT0ZFQ_AIZh2SzCOOuLKs7Jsmo0?from_tab_name=main"
             target="_blank"
             rel="noreferrer"
             className="group flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 transition hover:border-black/40 hover:shadow-md"
