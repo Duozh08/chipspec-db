@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { Chip } from '../data/types';
-import { BRAND_LABELS, fmtArea, totalDieArea } from '../data/types';
+import { BRAND_LABELS, fmtArea, fmtTdp, dieDimsMm, totalDieArea } from '../data/types';
 import ChipPhoto, { ChipPhotoUpload, readPhoto } from './ChipPhoto';
 import { useCompare } from '../context/CompareContext';
 import { useFavorites } from '../hooks/useFavorites';
@@ -12,12 +12,35 @@ const BRAND_STYLES: Record<Chip['brand'], string> = {
   nvidia: 'bg-lime-50 text-lime-800 border-lime-200',
 };
 
+/** 小芯片图标（有 Die 尺寸数据的芯片显示在名称右侧） */
+function ChipDimsBadge() {
+  return (
+    <span
+      className="shrink-0"
+      title="该芯片有 Die 长×宽数据"
+      aria-label="有 Die 尺寸数据"
+    >
+      <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 text-blue-500" fill="currentColor">
+        <rect x="2" y="2" width="12" height="12" rx="1" />
+        <path
+          d="M5 2v2.5M8 2v2.5M11 2v2.5M5 11.5V14M8 11.5V14M11 11.5V14M2 5h2.5M2 8h2.5M2 11h2.5M11.5 5H14M11.5 8H14M11.5 11H14"
+          stroke="currentColor"
+          strokeWidth="1.1"
+          strokeLinecap="round"
+          fill="none"
+        />
+      </svg>
+    </span>
+  );
+}
+
 export default function ChipCard({ chip }: { chip: Chip }) {
   const { add, remove, has, isFull } = useCompare();
   const { has: hasFav } = useFavorites();
   const inCompare = has(chip.id);
   const inFav = hasFav(chip.id);
   const area = totalDieArea(chip);
+  const hasDieDims = chip.dies.some((d) => dieDimsMm(d) != null);
 
   // 上传图片后刷新显示
   const [photoVersion, setPhotoVersion] = useState(0);
@@ -67,11 +90,33 @@ export default function ChipCard({ chip }: { chip: Chip }) {
           <span className="truncate text-[10px] text-slate-400">{chip.generation}</span>
         </div>
 
-        {/* 名称 */}
-        <div className="mt-1 truncate text-sm font-semibold leading-5 text-slate-800 group-hover:text-blue-600">
-          {chip.model}
+        {/* 名称（有 Die 尺寸数据时右侧显示芯片图标） */}
+        <div className="mt-1 flex items-center gap-1.5">
+          <span className="min-w-0 flex-1 truncate text-sm font-semibold leading-5 text-slate-800 group-hover:text-blue-600">
+            {chip.model}
+          </span>
+          {hasDieDims && <ChipDimsBadge />}
         </div>
         <div className="truncate text-[11px] text-slate-500">{chip.codename}</div>
+
+        {/* 规格标识（制程 / TDP / 满载温度） */}
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {chip.process && (
+            <span className="rounded border border-slate-100 bg-slate-50 px-1.5 py-0.5 text-[10px] text-slate-500">
+              {chip.process}
+            </span>
+          )}
+          {chip.tdp != null && (
+            <span className="rounded border border-amber-100 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-700">
+              TDP {fmtTdp(chip.tdp)}
+            </span>
+          )}
+          {chip.loadTempRange && (
+            <span className="rounded border border-red-100 bg-red-50 px-1.5 py-0.5 text-[10px] text-red-600">
+              {chip.loadTempRange}
+            </span>
+          )}
+        </div>
 
         {/* 底部：Die 信息 + 对比 */}
         <div className="mt-auto flex items-center justify-between gap-2 pt-2">
