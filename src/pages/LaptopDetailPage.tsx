@@ -242,25 +242,25 @@ export default function LaptopDetailPage() {
               const power = parsePower(gpu);
               const chipInfo = matchGpu(gpu);
               const inner = (
-                <>
-                  <div className="flex items-center gap-2">
-                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-green-600 text-xs font-bold text-white">
-                      {i + 1}
+                <div className="flex items-center gap-2">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-green-600 text-xs font-bold text-white">
+                    {i + 1}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700">{gpu}</span>
+                  {power && (
+                    <span className="shrink-0 rounded-full bg-green-600/10 px-2 py-0.5 text-xs font-medium text-green-700">
+                      {power}
                     </span>
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700">{gpu}</span>
-                    {power && (
-                      <span className="shrink-0 rounded-full bg-green-600/10 px-2 py-0.5 text-xs font-medium text-green-700">
-                        {power}
-                      </span>
-                    )}
-                  </div>
-                  {chipInfo && (
-                    <div className="mt-1 flex items-center gap-1.5 pl-8 text-[10px] text-slate-500">
-                      <span>Die 长×宽 {dieDimsSummary(chipInfo)}</span>
-                      <span className="text-green-600" aria-hidden>↗ 查看芯片</span>
-                    </div>
                   )}
-                </>
+                  {chipInfo && (
+                    <>
+                      <span className="shrink-0 rounded bg-white/70 px-1.5 py-0.5 text-[10px] text-slate-500">
+                        Die 长×宽 {dieDimsSummary(chipInfo)}
+                      </span>
+                      <span className="shrink-0 text-xs text-green-500" aria-hidden>↗</span>
+                    </>
+                  )}
+                </div>
               );
               return chipInfo ? (
                 <Link
