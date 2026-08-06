@@ -2,7 +2,7 @@ import { useSearchParams } from 'react-router-dom';
 import ChipCard from '../components/ChipCard';
 import FilterBar, { parseBrand, parseCategory, parseFormFactor } from '../components/FilterBar';
 import { useChipFilters } from '../hooks/useChipFilters';
-import { sortWithFavorites } from '../hooks/useFavorites';
+import { sortByYearThenFavorites } from '../hooks/useFavorites';
 
 export default function BrowsePage() {
   const [searchParams] = useSearchParams();
@@ -14,7 +14,8 @@ export default function BrowsePage() {
     query: searchParams.get('q') ?? '',
   });
 
-  const sorted = sortWithFavorites(chips);
+  // 按发布年份由近到远排序，关注项置顶
+  const sorted = sortByYearThenFavorites(chips);
 
   return (
     <div className="space-y-4">

@@ -50,7 +50,8 @@ export default function LaptopDetailPage() {
       {/* 标题区 */}
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-2xl font-bold text-slate-900">
-          {laptop.displayName}{year ? ` ${year}款` : ''}
+          {laptop.displayName}
+          {year && !laptop.displayName.includes(year) ? ` ${year}款` : ''}
         </h1>
         <span className="rounded-full bg-blue-600 px-2.5 py-0.5 text-xs font-medium text-white">
           {LAPTOP_BRAND_LABELS[laptop.brand]}

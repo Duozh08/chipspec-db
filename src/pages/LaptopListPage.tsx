@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { allLaptops } from '../data/laptops';
 import { LAPTOP_BRAND_LABELS, cpuPlatform } from '../data/types';
 import type { LaptopBrand } from '../data/types';
-import { sortWithFavorites, isFavorited } from '../hooks/useFavorites';
+import { sortByYearThenFavorites, isFavorited } from '../hooks/useFavorites';
 
 const BRAND_OPTIONS: { value: LaptopBrand | ''; label: string }[] = [
   { value: '', label: '全部品牌' },
@@ -34,7 +34,9 @@ function getYear(release: string | null): string {
 function formatCardTitle(laptop: { brand: LaptopBrand; displayName: string; release: string | null }): string {
   const brandLabel = LAPTOP_BRAND_LABELS[laptop.brand]?.split(' ')[0] ?? laptop.brand;
   const year = getYear(laptop.release);
-  return `${brandLabel}-${laptop.displayName}${year ? `-${year}款` : ''}`;
+  // displayName 若已含年份（历史数据兜底），不再重复追加
+  const nameHasYear = year ? laptop.displayName.includes(year) : false;
+  return `${brandLabel}-${laptop.displayName}${year && !nameHasYear ? `-${year}款` : ''}`;
 }
 
 /** 获取CPU方案平台标签 */
@@ -84,7 +86,8 @@ export default function LaptopListPage() {
       }
       return true;
     });
-    return sortWithFavorites(result);
+    // 按发布年份由近到远排序，关注项置顶
+    return sortByYearThenFavorites(result);
   }, [urlBrand, urlYear, urlQuery]);
 
   const apply = () => {

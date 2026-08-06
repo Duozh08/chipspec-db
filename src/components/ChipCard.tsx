@@ -23,11 +23,20 @@ export default function ChipCard({ chip }: { chip: Chip }) {
   const [photoVersion, setPhotoVersion] = useState(0);
   const photo = useMemo(() => readPhoto(chip.id), [chip.id, photoVersion]);
 
+  // 阻止对比按钮/上传按钮触发整卡跳转
+  const stopNav = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
   return (
-    <div className="group relative flex overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:border-blue-300 hover:shadow-md">
+    <Link
+      to={`/chip/${chip.id}`}
+      className="group relative flex overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:border-blue-300 hover:shadow-md"
+    >
       {inFav && (
         <span
-          className="absolute right-2 top-2 z-10 text-lg leading-none text-yellow-400 drop-shadow-[0_1px_2px_rgba(0,0,0,0.25)]"
+          className="pointer-events-none absolute right-2 top-2 z-10 text-lg leading-none text-yellow-400 drop-shadow-[0_1px_2px_rgba(0,0,0,0.25)]"
           title="已关注"
           aria-label="已关注"
         >
@@ -35,14 +44,11 @@ export default function ChipCard({ chip }: { chip: Chip }) {
         </span>
       )}
 
-      {/* 左侧：芯片图片（上传按钮在图片右下角，位于 Link 之外） */}
-      <div className="relative w-32 shrink-0">
-        <Link
-          to={`/chip/${chip.id}`}
-          className="flex h-full w-full items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 p-2"
-        >
-          <ChipPhoto chip={chip} photo={photo} className="h-24 w-auto max-w-full" />
-        </Link>
+      {/* 左侧：芯片图片（固定高度与游戏本卡片一致，上传按钮在图片右下角） */}
+      <div className="relative h-40 w-32 shrink-0">
+        <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 p-2">
+          <ChipPhoto chip={chip} photo={photo} className="h-28 w-auto max-w-full" />
+        </div>
         <div className="absolute bottom-1 right-1 z-20">
           <ChipPhotoUpload chip={chip} onChanged={() => setPhotoVersion((v) => v + 1)} />
         </div>
@@ -62,12 +68,9 @@ export default function ChipCard({ chip }: { chip: Chip }) {
         </div>
 
         {/* 名称 */}
-        <Link
-          to={`/chip/${chip.id}`}
-          className="mt-1 truncate text-sm font-semibold leading-5 text-slate-800 group-hover:text-blue-600"
-        >
+        <div className="mt-1 truncate text-sm font-semibold leading-5 text-slate-800 group-hover:text-blue-600">
           {chip.model}
-        </Link>
+        </div>
         <div className="truncate text-[11px] text-slate-500">{chip.codename}</div>
 
         {/* 底部：Die 信息 + 对比 */}
@@ -77,7 +80,11 @@ export default function ChipCard({ chip }: { chip: Chip }) {
           </span>
           <button
             type="button"
-            onClick={() => (inCompare ? remove(chip.id) : add(chip.id))}
+            onClick={(e) => {
+              stopNav(e);
+              if (inCompare) remove(chip.id);
+              else add(chip.id);
+            }}
             disabled={!inCompare && isFull}
             className={`shrink-0 rounded-lg border px-2 py-0.5 text-[11px] font-medium transition ${
               inCompare
@@ -90,6 +97,6 @@ export default function ChipCard({ chip }: { chip: Chip }) {
           </button>
         </div>
       </div>
-    </div>
+    </Link>
   );
 }

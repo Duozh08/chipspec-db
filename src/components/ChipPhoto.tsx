@@ -58,7 +58,7 @@ export default function ChipPhoto({
 
 /**
  * 独立的图片上传控制（编辑 + 删除按钮）。
- * 必须放在 Link 元素之外使用，避免点击触发页面跳转。
+ * 可放在 Link 内部使用：按钮点击会阻止事件冒泡，不会触发整卡跳转。
  */
 export function ChipPhotoUpload({ chip, onChanged }: { chip: Chip; onChanged?: () => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -91,6 +91,18 @@ export function ChipPhotoUpload({ chip, onChanged }: { chip: Chip; onChanged?: (
     onChanged?.();
   };
 
+  // 阻止点击上传/删除按钮触发外层 Link 跳转。
+  // 注意：file input 的 onClick 只能 stopPropagation，不能 preventDefault，
+  // 否则会阻止浏览器打开文件选择器。
+  const stopNav = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const stopPropOnly = (e: React.MouseEvent) => {
+    e.stopPropagation();
+  };
+
   return (
     <>
       <input
@@ -98,6 +110,7 @@ export function ChipPhotoUpload({ chip, onChanged }: { chip: Chip; onChanged?: (
         type="file"
         accept="image/jpeg,image/png,image/webp"
         className="hidden"
+        onClick={stopPropOnly}
         onChange={(e) => {
           const f = e.target.files?.[0];
           if (f) handleFile(f);
@@ -107,7 +120,10 @@ export function ChipPhotoUpload({ chip, onChanged }: { chip: Chip; onChanged?: (
         <button
           type="button"
           title={hasPhoto ? '更换图片' : '上传图片'}
-          onClick={() => fileRef.current?.click()}
+          onClick={(e) => {
+            stopNav(e);
+            fileRef.current?.click();
+          }}
           className="flex h-6 w-6 items-center justify-center rounded-full bg-white/95 text-slate-600 shadow ring-1 ring-slate-200 transition hover:bg-blue-500 hover:text-white hover:ring-blue-500"
         >
           <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -118,7 +134,10 @@ export function ChipPhotoUpload({ chip, onChanged }: { chip: Chip; onChanged?: (
           <button
             type="button"
             title="删除图片"
-            onClick={handleRemove}
+            onClick={(e) => {
+              stopNav(e);
+              handleRemove();
+            }}
             className="flex h-6 w-6 items-center justify-center rounded-full bg-white/95 text-red-500 shadow ring-1 ring-slate-200 transition hover:bg-red-500 hover:text-white hover:ring-red-500"
           >
             <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">

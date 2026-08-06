@@ -18,12 +18,12 @@ const FEATURED_CHIPS = [
 
 // 热门游戏本推荐
 const FEATURED_LAPTOPS = [
-  'lenovo-y9000p-2024-16irx9',
-  'lenovo-y7000p-2024-16irx9',
-  'asus-rog-8-2024-g614j',
-  'asus-rog-9-2025-g615w',
-  'hp-9-2023-omen-16-wf0000',
-  'dell-alienware-m18-r2-2024-m18-r2',
+  'lenovo-y9000p-16irx9',
+  'lenovo-y7000p-16irx9',
+  'asus-rog-8-g614j',
+  'asus-rog-9-g615w',
+  'hp-9-omen-16-wf0000',
+  'dell-alienwarem18r2-m18-r2',
 ];
 
 function ChipBadge({ chip }: { chip: Chip }) {
@@ -59,10 +59,42 @@ export default function HomePage() {
     <div className="space-y-8">
       {/* Hero */}
       <div className="rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-700 p-8 text-white shadow-lg sm:p-12">
-        <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">ChipSpec DB</h1>
-        <p className="mt-3 max-w-2xl text-base text-blue-100 sm:text-lg">
-          芯片规格数据库 — 收录 Intel、AMD、NVIDIA 消费级处理器与显卡的封装尺寸、芯片本体（Die）尺寸、TDP 功耗等详细规格，主流品牌游戏本配置参数查询，以及维修经验交流社区。
-        </p>
+        <div className="flex flex-wrap items-start justify-between gap-6">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">ChipSpec DB</h1>
+            <p className="mt-3 max-w-2xl text-base text-blue-100 sm:text-lg">
+              芯片规格数据库 — 收录 Intel、AMD、NVIDIA 消费级处理器与显卡的封装尺寸、芯片本体（Die）尺寸、TDP 功耗等详细规格，主流品牌游戏本配置参数查询，以及维修经验交流社区。
+            </p>
+          </div>
+
+          {/* 必应中文搜索 */}
+          <form
+            action="https://cn.bing.com/search"
+            method="get"
+            target="_blank"
+            rel="noreferrer"
+            className="w-full max-w-sm shrink-0 rounded-2xl bg-white/10 p-3.5 shadow-inner backdrop-blur"
+          >
+            <div className="flex items-center gap-1.5 text-xs font-medium text-blue-100">
+              <span className="text-sm">🔍</span> 必应中文搜索
+            </div>
+            <div className="mt-2 flex overflow-hidden rounded-lg bg-white shadow-sm">
+              <input
+                name="q"
+                type="search"
+                placeholder="搜索芯片 / 技术资料 / 行业资讯…"
+                className="min-w-0 flex-1 px-3 py-2 text-sm text-slate-800 outline-none placeholder:text-slate-400"
+              />
+              <button
+                type="submit"
+                className="shrink-0 bg-sky-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-600 active:bg-sky-700"
+              >
+                搜索
+              </button>
+            </div>
+            <p className="mt-1.5 text-[11px] text-blue-200/70">在新窗口打开 cn.bing.com 搜索结果</p>
+          </form>
+        </div>
         <div className="mt-6 flex flex-wrap gap-4 text-sm">
           <span className="rounded-full bg-white/15 px-3 py-1 backdrop-blur">
             📊 {allChips.length} 颗芯片

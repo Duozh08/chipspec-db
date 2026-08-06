@@ -58,3 +58,17 @@ export function sortWithFavorites<T extends { id: string }>(items: T[]): T[] {
     return bf - af;
   });
 }
+
+/** 按发布时间年份从近到远排序（最新在前；无年份的排最后） */
+export function sortByReleaseYearDesc<T extends { release: string | null }>(items: T[]): T[] {
+  return [...items].sort((a, b) => {
+    const ay = a.release ? Number(a.release.slice(0, 4)) || 0 : 0;
+    const by = b.release ? Number(b.release.slice(0, 4)) || 0 : 0;
+    return by - ay;
+  });
+}
+
+/** 组合排序：先按年份倒序，再按收藏置顶（收藏组内仍保持年份倒序） */
+export function sortByYearThenFavorites<T extends { id: string; release: string | null }>(items: T[]): T[] {
+  return sortWithFavorites(sortByReleaseYearDesc(items));
+}

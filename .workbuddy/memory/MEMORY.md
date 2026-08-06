@@ -13,6 +13,8 @@
 - Die 长宽普遍缺失 → 留 null，示意图按面积折算正方形并标注 ~
 - 多 Die 拓扑用 `dies[].layout` 相对坐标（0~1，Die 中心位置）；无 layout 时自动流式排列
 - **Laptop 数据结构（v4 起）**：`cpuOptions[]/gpuOptions[]` 支持一型号多 CPU/GPU 方案；无 `priceCny`；品牌含 dell/hasee/xiaomi/honor/gigabyte/huawei/machenike/thunderobot；`cpuPlatform()` 判定 Intel/AMD
+- **游戏本分组规则（2026-08-06 起）**：gen-data.py 按 **(品牌, 规范化名称, 型号)** 分组；规范化 = 去空格/去末尾年份/去 AI元启/酷睿版/锐龙版。当前 345 款。注意同型号可能对应多个不同产品（联想 16IRX9 = Y7000P+Y9000P+Y9000K），必须按规范名分开，不能按 (品牌,型号) 一刀切
+- **注意**：规范化后游戏本 id 不含年份（如 `lenovo-y9000p-16irx9`）；首页 FEATURED_LAPTOPS 等硬编码 id 引用，数据重生成后需核对
 - **本地持久化**：收藏 `chipspec-favorites`、芯片上传图 `chipspec-chip-photos`、论坛帖子 `chipspec-repair-posts`（均 localStorage）
 - **注意**：v4 游戏本数据源自 Excel，不含烤机 stressTest 数据（Excel 无该列），详情页烤机区块自动隐藏
 

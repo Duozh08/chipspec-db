@@ -425,14 +425,22 @@ def gen_laptops():
             continue
         rows.append(dict(zip(headers, row)))
 
-    # Group by (brand, 中文名称, 型号)
+    # 中文名称规范化：去空格/去年份/去平台与变体后缀，用于合并同型号不同配置
+    def norm_name(n):
+        s = str(n).replace(' ', '')
+        s = re.sub(r'\d{4}款?$', '', s)   # 去末尾年份（2021 / 2021款）
+        s = s.replace('AI元启', '')
+        s = s.replace('酷睿版', '').replace('锐龙版', '')
+        return s
+
+    # Group by (brand, 规范化中文名称, 型号)
     from collections import defaultdict, OrderedDict
     groups = OrderedDict()
 
     for r in rows:
         brand_cn = str(r.get('品牌', '')).strip()
         series = str(r.get('系列', '')).strip()
-        name = str(r.get('中文名称', '')).strip()
+        name = norm_name(r.get('中文名称', ''))
         model = str(r.get('型号', '')).strip()
         key = (brand_cn, name, model)
 
@@ -452,7 +460,8 @@ def gen_laptops():
 
         g = groups[key]
         release = str(r.get('发布时间', '')).strip()
-        if release and not g['release']:
+        # 取组内最早发布时间，保证年份为系列起始年份
+        if release and (not g['release'] or release < g['release']):
             g['release'] = release
 
         cpu = str(r.get('处理器', '')).strip()
