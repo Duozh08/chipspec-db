@@ -1,5 +1,5 @@
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { getLaptopById } from '../data/laptops';
+import { allLaptops, getLaptopById } from '../data/laptops';
 import { stressTests } from '../data/stress-tests';
 import { allChips } from '../data';
 import type { Chip } from '../data/types';
@@ -83,6 +83,46 @@ export default function LaptopDetailPage() {
   // 按平台分组 CPU 方案
   const intelCpus = laptop.cpuOptions.filter((c) => cpuPlatform(c) === 'intel');
   const amdCpus = laptop.cpuOptions.filter((c) => cpuPlatform(c) === 'amd');
+  const hasIntel = intelCpus.length > 0;
+  const hasAmd = amdCpus.length > 0;
+
+  // 最大显卡功耗（解析 gpuOptions 中的功耗标注）
+  const gpuPowers = laptop.gpuOptions
+    .map((g) => g.match(/\((\d+)\s*W\)/i)?.[1])
+    .filter(Boolean)
+    .map(Number);
+  const maxGpuPowerW = gpuPowers.length > 0 ? Math.max(...gpuPowers) : null;
+
+  // 屏幕解析：刷新率 / 分辨率
+  const refreshMatch = laptop.display?.match(/(\d+)\s*(?:Hz|HZ)/i);
+  const refreshHz = refreshMatch ? Number(refreshMatch[1]) : null;
+  const resText = laptop.display?.match(/(\d{3,4})\s*[x×]\s*(\d{3,4})/i);
+  const resPixels = resText ? Number(resText[1]) * Number(resText[2]) : null;
+  const isHighRes = resPixels != null && resPixels >= 3686400; // ≥2560x1440
+
+  // 双烤总功耗
+  const dualTotal = stress?.dualCpuPowerW != null && stress?.dualGpuPowerW != null ? stress.dualCpuPowerW + stress.dualGpuPowerW : null;
+
+  // 特性标签（行业卖点）
+  const features: string[] = [];
+  if (hasIntel && hasAmd) features.push('双平台可选');
+  else if (hasAmd) features.push('AMD 平台');
+  else features.push('Intel 平台');
+  if (maxGpuPowerW != null) {
+    if (maxGpuPowerW >= 140) features.push('满血显卡');
+    else if (maxGpuPowerW >= 100) features.push('高功耗显卡');
+    else features.push('标准功耗显卡');
+  }
+  if (refreshHz != null && refreshHz >= 165) features.push('高刷电竞屏');
+  if (isHighRes) features.push('高分屏');
+  if (stress) features.push('第三方烤机实测');
+  if (dualTotal != null && dualTotal >= 200) features.push('性能释放激进');
+
+  // 同品牌相关机型（排除自身，年份倒序取 6 款）
+  const related = allLaptops
+    .filter((l) => l.brand === laptop.brand && l.id !== laptop.id)
+    .sort((a, b) => (b.release ?? '').localeCompare(a.release ?? ''))
+    .slice(0, 6);
 
   const specs: [string, string][] = [
     ['品牌', LAPTOP_BRAND_LABELS[laptop.brand]],
@@ -90,6 +130,10 @@ export default function LaptopDetailPage() {
     ['中文名称', laptop.displayName],
     ['型号', laptop.model],
     ['发布时间', laptop.release ?? '暂无数据'],
+    ['处理器平台', hasAmd && hasIntel ? 'Intel + AMD 双平台' : hasAmd ? 'AMD' : 'Intel'],
+    ['处理器方案', `${laptop.cpuOptions.length} 种（${laptop.cpuOptions.join(' / ')}）`],
+    ['显卡方案', `${laptop.gpuOptions.length} 种（${laptop.gpuOptions.join(' / ')}）`],
+    ['最大显卡功耗', maxGpuPowerW != null ? `${maxGpuPowerW} W` : '暂无数据'],
     ['内存', laptop.ram],
     ['硬盘', laptop.storage],
     ['屏幕', laptop.display],
@@ -134,19 +178,112 @@ export default function LaptopDetailPage() {
         </div>
       </div>
 
-      {/* 处理器方案 */}
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <div className="border-b border-slate-100 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700">
-          处理器方案（共 {laptop.cpuOptions.length} 种）
+      {/* 特性标签（行业卖点） */}
+      {features.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {features.map((f) => (
+            <span key={f} className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
+              {f}
+            </span>
+          ))}
         </div>
-        <div className="p-4">
-          {/* Intel 方案 */}
-          {intelCpus.length > 0 && (
-            <div className="mb-3">
-              <div className="mb-2 flex items-center gap-2">
-                <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600">Intel</span>
-                <span className="text-xs text-slate-400">{intelCpus.length} 种方案</span>
+      )}
+
+      {/* 左右两列：左=示意图+速览，右=规格+方案 */}
+      <div className="grid items-stretch gap-5 lg:grid-cols-[300px_1fr]">
+        {/* 左列 */}
+        <div className="flex flex-col gap-3">
+          {/* 笔记本示意图 */}
+          <div className="flex items-center justify-center rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-slate-100 p-6 shadow-sm">
+            <svg viewBox="0 0 120 100" className="h-28 w-32 text-slate-400" fill="none" stroke="currentColor">
+              <rect x="15" y="10" width="90" height="55" rx="3" strokeWidth="2" />
+              <rect x="20" y="15" width="80" height="45" rx="1" strokeWidth="1" opacity="0.4" />
+              <path d="M8 72 L112 72 L108 82 L12 82 Z" strokeWidth="2" strokeLinejoin="round" />
+              <line x1="55" y1="77" x2="65" y2="77" strokeWidth="1.5" />
+            </svg>
+          </div>
+
+          {/* 关键参数速览 */}
+          <div className="flex-1 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="mb-3 text-sm font-semibold text-slate-700">关键参数速览</div>
+            <div className="grid grid-cols-2 gap-2.5">
+              <div className="rounded-lg bg-slate-50 p-2.5">
+                <div className="text-xs text-slate-500">处理器平台</div>
+                <div className="mt-0.5 text-sm font-medium text-slate-800">
+                  {hasAmd && hasIntel ? 'Intel+AMD' : hasAmd ? 'AMD' : 'Intel'}
+                </div>
               </div>
+              <div className="rounded-lg bg-slate-50 p-2.5">
+                <div className="text-xs text-slate-500">处理器方案</div>
+                <div className="mt-0.5 text-sm font-medium text-slate-800">{laptop.cpuOptions.length} 种</div>
+              </div>
+              <div className="rounded-lg bg-slate-50 p-2.5">
+                <div className="text-xs text-slate-500">最大显卡功耗</div>
+                <div className="mt-0.5 text-sm font-medium text-slate-800">
+                  {maxGpuPowerW != null ? `${maxGpuPowerW} W` : '暂无数据'}
+                </div>
+              </div>
+              <div className="rounded-lg bg-slate-50 p-2.5">
+                <div className="text-xs text-slate-500">屏幕刷新率</div>
+                <div className="mt-0.5 text-sm font-medium text-slate-800">
+                  {refreshHz != null ? `${refreshHz} Hz` : '暂无数据'}
+                </div>
+              </div>
+              <div className="rounded-lg bg-slate-50 p-2.5">
+                <div className="text-xs text-slate-500">内存</div>
+                <div className="mt-0.5 truncate text-sm font-medium text-slate-800">{laptop.ram}</div>
+              </div>
+              <div className="rounded-lg bg-slate-50 p-2.5">
+                <div className="text-xs text-slate-500">硬盘</div>
+                <div className="mt-0.5 truncate text-sm font-medium text-slate-800">{laptop.storage}</div>
+              </div>
+              {stress && dualTotal != null && (
+                <div className="rounded-lg bg-slate-50 p-2.5">
+                  <div className="text-xs text-slate-500">双烤总功耗</div>
+                  <div className="mt-0.5 text-sm font-medium text-slate-800">{dualTotal} W</div>
+                </div>
+              )}
+              <div className="rounded-lg bg-slate-50 p-2.5">
+                <div className="text-xs text-slate-500">发布年份</div>
+                <div className="mt-0.5 text-sm font-medium text-slate-800">{year || '暂无数据'}</div>
+              </div>
+            </div>
+            <p className="mt-3 text-xs leading-5 text-slate-400">
+              示意图为通用笔记本外观示意，非实物照片；具体配置以厂商官方为准。
+            </p>
+          </div>
+        </div>
+
+        {/* 右列 */}
+        <div className="flex min-w-0 flex-col gap-5">
+          {/* 基本规格表 */}
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <div className="border-b border-slate-100 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700">
+              基本规格
+            </div>
+            <dl className="divide-y divide-slate-100">
+              {specs.map(([label, value]) => (
+                <div key={label} className="grid grid-cols-[8.5rem_1fr] gap-4 px-4 py-2.5 text-sm">
+                  <dt className="text-slate-500">{label}</dt>
+                  <dd className="text-slate-800">{value}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+
+          {/* 处理器方案 */}
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <div className="border-b border-slate-100 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700">
+              处理器方案（共 {laptop.cpuOptions.length} 种）<span className="ml-2 text-xs font-normal text-slate-400">点击可查看芯片详情</span>
+            </div>
+            <div className="p-4">
+              {/* Intel 方案 */}
+              {intelCpus.length > 0 && (
+                <div className="mb-3">
+                  <div className="mb-2 flex items-center gap-2">
+                    <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600">Intel</span>
+                    <span className="text-xs text-slate-400">{intelCpus.length} 种方案</span>
+                  </div>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {intelCpus.map((cpu, i) => {
                   const chipInfo = matchCpu(cpu);
@@ -280,20 +417,7 @@ export default function LaptopDetailPage() {
           </div>
         </div>
       </div>
-
-      {/* 基本规格表 */}
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <div className="border-b border-slate-100 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700">
-          基本规格
         </div>
-        <dl className="divide-y divide-slate-100">
-          {specs.map(([label, value]) => (
-            <div key={label} className="grid grid-cols-[8.5rem_1fr] gap-4 px-4 py-2.5 text-sm">
-              <dt className="text-slate-500">{label}</dt>
-              <dd className="text-slate-800">{value}</dd>
-            </div>
-          ))}
-        </dl>
       </div>
 
       {/* 烤机测试（v3 历史实测数据恢复；按型号匹配，部分机型无数据） */}
@@ -340,6 +464,30 @@ export default function LaptopDetailPage() {
           </p>
         )}
       </div>
+
+      {/* 同品牌相关机型 */}
+      {related.length > 0 && (
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+          <div className="border-b border-slate-100 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700">
+            同品牌其他机型（{LAPTOP_BRAND_LABELS[laptop.brand]}）
+          </div>
+          <div className="grid gap-2 p-4 sm:grid-cols-2 lg:grid-cols-3">
+            {related.map((r) => (
+              <Link
+                key={r.id}
+                to={`/laptop/${r.id}`}
+                className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 px-3 py-2 text-sm transition hover:border-blue-300 hover:bg-blue-50"
+              >
+                <span className="min-w-0 truncate font-medium text-slate-700">
+                  {r.displayName}
+                  {r.release && !r.displayName.includes(r.release.slice(0, 4)) ? ` ${r.release.slice(0, 4)}款` : ''}
+                </span>
+                <span className="shrink-0 text-xs text-slate-400">{r.model}</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* 来源 */}
       {laptop.sources.length > 0 && (
