@@ -108,6 +108,66 @@ export default function HomePage() {
         </div>
       </div>
 
+      {/* 自媒体平台（刘大师兄笔记本维修） */}
+      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-slate-800">📺 刘大师兄笔记本维修</h2>
+          <span className="text-xs text-slate-400">关注获取最新维修案例与干货</span>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <a
+            href="https://www.douyin.com/user/MS4wLjABAAAA4D0P8CKTJtgKcLrWasR45sAGJpj7E6CIl76upgAu_STgccsSXDasACYNo_LxLDcR"
+            target="_blank"
+            rel="noreferrer"
+            className="group flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 transition hover:border-black/40 hover:shadow-md"
+          >
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-black text-white">
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">
+                <path d="M16.6 5.82A4.28 4.28 0 0 1 15.54 3h-3.09v12.4a2.59 2.59 0 1 1-1.73-2.44V9.8a5.66 5.66 0 1 0 4.88 5.6V9.9a7.35 7.35 0 0 0 4.3 1.35V8.16a4.3 4.3 0 0 1-3.3-2.34z" />
+              </svg>
+            </span>
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-slate-800 group-hover:text-black">抖音</div>
+              <div className="truncate text-xs text-slate-500">刘大师兄笔记本维修</div>
+            </div>
+            <span className="ml-auto text-slate-300 transition group-hover:text-black">↗</span>
+          </a>
+
+          <a
+            href="https://space.bilibili.com/486984223"
+            target="_blank"
+            rel="noreferrer"
+            className="group flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 transition hover:border-pink-400 hover:shadow-md"
+          >
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-pink-500 text-white">
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="7" width="18" height="13" rx="3" />
+                <path d="M8 7l-3-4M16 7l3-4" />
+                <path d="M9.5 13.5l5-3-5-3v6z" fill="currentColor" stroke="none" />
+              </svg>
+            </span>
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-slate-800 group-hover:text-pink-500">B站</div>
+              <div className="truncate text-xs text-slate-500">刘大师兄笔记本维修</div>
+            </div>
+            <span className="ml-auto text-slate-300 transition group-hover:text-pink-500">↗</span>
+          </a>
+
+          {/* 视频号：预留位置 */}
+          <div className="flex cursor-not-allowed items-center gap-3 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 opacity-60">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-500 text-white">
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">
+                <path d="M6 3.5h12a2.5 2.5 0 0 1 2.5 2.5v12a2.5 2.5 0 0 1-2.5 2.5H6A2.5 2.5 0 0 1 3.5 18V6A2.5 2.5 0 0 1 6 3.5zm3.2 4.6v7.8a.8.8 0 0 0 1.22.68l6.3-3.9a.8.8 0 0 0 0-1.36l-6.3-3.9a.8.8 0 0 0-1.22.68z" />
+              </svg>
+            </span>
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-slate-700">视频号</div>
+              <div className="truncate text-xs text-slate-400">刘大师兄笔记本维修 · 敬请期待</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* 三大模块 */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Link

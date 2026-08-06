@@ -1,13 +1,56 @@
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { getLaptopById } from '../data/laptops';
 import { stressTests } from '../data/stress-tests';
-import { LAPTOP_BRAND_LABELS, cpuPlatform } from '../data/types';
+import { allChips } from '../data';
+import type { Chip } from '../data/types';
+import { LAPTOP_BRAND_LABELS, cpuPlatform, fmtDieDims } from '../data/types';
 import { useFavorites } from '../hooks/useFavorites';
 
 /** 从显卡方案字符串解析功耗，如 "RTX 4060 (140W)" → "140W" */
 function parsePower(s: string): string | null {
   const m = s.match(/\((\d+)\s*W\)/i);
   return m ? `${m[1]} W` : null;
+}
+
+function normModel(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+/** 匹配移动端 CPU 芯片（精确 → 直接包含 → 核心编号，命中多个时取最短型号） */
+function matchCpu(query: string): Chip | undefined {
+  const cpus = allChips.filter((c) => c.category === 'cpu' && c.formFactor === 'mobile');
+  const q = normModel(query);
+  if (q.length >= 4) {
+    const exact = cpus.find((c) => normModel(c.model) === q);
+    if (exact) return exact;
+    const inc = cpus.find((c) => normModel(c.model).includes(q));
+    if (inc) return inc;
+  }
+  // 提取核心型号标识：如 "i9-14900HX" → "14900hx"、"R7 7745HX" → "7745hx"（要求 ≥4 位数字避免误匹配）
+  const core = query.toLowerCase().match(/(\d{4,}[a-z]*\s*hx|\d{4,})/i)?.[0]?.replace(/\s+/g, '');
+  if (core) {
+    const hits = cpus.filter((c) => normModel(c.model).includes(core));
+    if (hits.length > 0) {
+      return hits.sort((a, b) => normModel(a.model).length - normModel(b.model).length)[0];
+    }
+  }
+  return undefined;
+}
+
+/** 匹配移动端 GPU 芯片（RTX/GTX/RX 编号提取） */
+function matchGpu(query: string): Chip | undefined {
+  const lower = query.toLowerCase();
+  const m = lower.match(/(rtx\s*\d+)/) ?? lower.match(/(gtx\s*\d+)/) ?? lower.match(/(rx\s*\d+)/);
+  if (!m) return undefined;
+  const key = m[1].replace(/\s+/g, '');
+  return allChips.find((c) => c.category === 'gpu' && c.formFactor === 'mobile' && normModel(c.model).includes(key));
+}
+
+/** 芯片 Die 长宽摘要（多 Die 显示首 Die + 总数） */
+function dieDimsSummary(chip: Chip): string {
+  if (chip.dies.length === 0) return '暂无数据';
+  const first = fmtDieDims(chip.dies[0]);
+  return chip.dies.length > 1 ? `${first}（共${chip.dies.length} Die）` : first;
 }
 
 export default function LaptopDetailPage() {
@@ -99,14 +142,24 @@ export default function LaptopDetailPage() {
                 <span className="text-xs text-slate-400">{intelCpus.length} 种方案</span>
               </div>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                {intelCpus.map((cpu, i) => (
-                  <div key={i} className="flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50/50 px-3 py-2">
-                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
-                      {i + 1}
-                    </span>
-                    <span className="text-sm font-medium text-slate-700">{cpu}</span>
-                  </div>
-                ))}
+                {intelCpus.map((cpu, i) => {
+                  const chipInfo = matchCpu(cpu);
+                  return (
+                    <div key={i} className="rounded-lg border border-blue-100 bg-blue-50/50 px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
+                          {i + 1}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700">{cpu}</span>
+                        {chipInfo && (
+                          <span className="shrink-0 rounded bg-white/70 px-1.5 py-0.5 text-[10px] text-slate-500">
+                            Die 长×宽 {dieDimsSummary(chipInfo)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -118,14 +171,24 @@ export default function LaptopDetailPage() {
                 <span className="text-xs text-slate-400">{amdCpus.length} 种方案</span>
               </div>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                {amdCpus.map((cpu, i) => (
-                  <div key={i} className="flex items-center gap-2 rounded-lg border border-red-100 bg-red-50/50 px-3 py-2">
-                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-red-600 text-xs font-bold text-white">
-                      {i + 1}
-                    </span>
-                    <span className="text-sm font-medium text-slate-700">{cpu}</span>
-                  </div>
-                ))}
+                {amdCpus.map((cpu, i) => {
+                  const chipInfo = matchCpu(cpu);
+                  return (
+                    <div key={i} className="rounded-lg border border-red-100 bg-red-50/50 px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-red-600 text-xs font-bold text-white">
+                          {i + 1}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700">{cpu}</span>
+                        {chipInfo && (
+                          <span className="shrink-0 rounded bg-white/70 px-1.5 py-0.5 text-[10px] text-slate-500">
+                            Die 长×宽 {dieDimsSummary(chipInfo)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -141,16 +204,24 @@ export default function LaptopDetailPage() {
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {laptop.gpuOptions.map((gpu, i) => {
               const power = parsePower(gpu);
+              const chipInfo = matchGpu(gpu);
               return (
-                <div key={i} className="flex items-center gap-2 rounded-lg border border-green-100 bg-green-50/50 px-3 py-2">
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-green-600 text-xs font-bold text-white">
-                    {i + 1}
-                  </span>
-                  <span className="text-sm font-medium text-slate-700">{gpu}</span>
-                  {power && (
-                    <span className="ml-auto shrink-0 rounded-full bg-green-600/10 px-2 py-0.5 text-xs font-medium text-green-700">
-                      {power}
+                <div key={i} className="rounded-lg border border-green-100 bg-green-50/50 px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-green-600 text-xs font-bold text-white">
+                      {i + 1}
                     </span>
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700">{gpu}</span>
+                    {power && (
+                      <span className="shrink-0 rounded-full bg-green-600/10 px-2 py-0.5 text-xs font-medium text-green-700">
+                        {power}
+                      </span>
+                    )}
+                  </div>
+                  {chipInfo && (
+                    <div className="mt-1 pl-8 text-[10px] text-slate-500">
+                      Die 长×宽 {dieDimsSummary(chipInfo)}
+                    </div>
                   )}
                 </div>
               );
