@@ -37,13 +37,19 @@ function matchCpu(query: string): Chip | undefined {
   return undefined;
 }
 
-/** 匹配移动端 GPU 芯片（RTX/GTX/RX 编号提取） */
+/** 匹配移动端 GPU 芯片（RTX/GTX/RX 编号提取；区分 Ti 版本） */
 function matchGpu(query: string): Chip | undefined {
   const lower = query.toLowerCase();
   const m = lower.match(/(rtx\s*\d+)/) ?? lower.match(/(gtx\s*\d+)/) ?? lower.match(/(rx\s*\d+)/);
   if (!m) return undefined;
   const key = m[1].replace(/\s+/g, '');
-  return allChips.find((c) => c.category === 'gpu' && c.formFactor === 'mobile' && normModel(c.model).includes(key));
+  const cands = allChips.filter(
+    (c) => c.category === 'gpu' && c.formFactor === 'mobile' && normModel(c.model).includes(key)
+  );
+  if (cands.length === 0) return undefined;
+  const isTi = /\bti\b/i.test(lower.replace(/\s+/g, ' '));
+  if (isTi) return cands.find((c) => normModel(c.model).includes('ti')) ?? cands[0];
+  return cands.find((c) => !normModel(c.model).includes('ti')) ?? cands[0];
 }
 
 /** 芯片 Die 长宽摘要（多 Die 显示首 Die + 总数） */
