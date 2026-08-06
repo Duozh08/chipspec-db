@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
+import { saveFile, getFile, getFileUsage, deleteFile, extractFileIds, formatBytes } from '../utils/fileStore';
 
 const STORAGE_KEY = 'chipspec-repair-posts';
 const LIKES_KEY = 'chipspec-repair-likes';
+
+/** 单文件大小限制（视频 / 普通附件）与总空间上限（IndexedDB 长期积累的自我管理） */
+const MAX_VIDEO_SIZE = 50 * 1024 * 1024; // 50MB
+const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
+const MAX_TOTAL_BYTES = 200 * 1024 * 1024; // 200MB
 
 interface Post {
   id: string;
@@ -269,7 +275,16 @@ export default function RepairPage() {
   };
 
   const handleDeletePost = (postId: string) => {
-    updatePosts((prev) => prev.filter((p) => p.id !== postId));
+    updatePosts((prev) => {
+      const target = prev.find((p) => p.id === postId);
+      if (target) {
+        // 清理该帖子引用的附件（异步，不阻塞）
+        extractFileIds(target.content).forEach((fid) => {
+          deleteFile(fid).catch(() => undefined);
+        });
+      }
+      return prev.filter((p) => p.id !== postId);
+    });
     setView('list');
   };
 
@@ -483,6 +498,40 @@ function PostDetail({
 }) {
   const [replyText, setReplyText] = useState('');
   const [replyAuthor, setReplyAuthor] = useState('');
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  // 渲染内容后，把 [data-file-id] 的附件/视频从 IndexedDB 加载为 ObjectURL 显示
+  useEffect(() => {
+    const root = contentRef.current;
+    if (!root) return;
+    const urls: string[] = [];
+    const els = Array.from(root.querySelectorAll<HTMLElement>('[data-file-id]'));
+    els.forEach((el) => {
+      const fid = el.getAttribute('data-file-id');
+      if (!fid) return;
+      getFile(fid)
+        .then((rec) => {
+          if (!rec) {
+            el.textContent = '（附件已失效）';
+            return;
+          }
+          const url = URL.createObjectURL(rec.blob);
+          urls.push(url);
+          if (el.tagName === 'VIDEO') {
+            el.setAttribute('src', url);
+          } else if (el.tagName === 'A') {
+            el.setAttribute('href', url);
+            el.setAttribute('download', rec.name);
+          } else if (el.tagName === 'IMG') {
+            el.setAttribute('src', url);
+          }
+        })
+        .catch(() => {
+          el.textContent = '（附件加载失败）';
+        });
+    });
+    return () => urls.forEach((u) => URL.revokeObjectURL(u));
+  }, [post.content]);
 
   const handleReply = () => {
     if (!replyText.trim()) return;
@@ -567,7 +616,8 @@ function PostDetail({
           </button>
         </div>
         <div
-          className={`mt-4 max-w-none text-sm leading-6 text-slate-700 [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_img]:max-w-full [&_img]:rounded-lg ${TABLE_STYLE}`}
+          ref={contentRef}
+          className={`mt-4 max-w-none text-sm leading-6 text-slate-700 [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_img]:max-w-full [&_img]:rounded-lg [&_video]:max-w-full [&_video]:rounded-lg [&_video]:my-2 ${TABLE_STYLE}`}
           dangerouslySetInnerHTML={{ __html: post.content }}
         />
       </div>
@@ -643,8 +693,17 @@ function PostEditor({ onSubmit, onCancel }: { onSubmit: (post: Post) => void; on
   const [title, setTitle] = useState('');
   const [author, setAuthor] = useState('');
   const [category, setCategory] = useState(CATEGORIES[0]);
+  const [usage, setUsage] = useState<{ count: number; totalBytes: number }>({ count: 0, totalBytes: 0 });
+  const [uploadMsg, setUploadMsg] = useState('');
   const editorRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 初始化附件用量统计
+  useEffect(() => {
+    getFileUsage().then(setUsage).catch(() => undefined);
+  }, []);
 
   const exec = useCallback((command: string, value?: string) => {
     document.execCommand(command, false, value);
@@ -658,6 +717,57 @@ function PostEditor({ onSubmit, onCancel }: { onSubmit: (post: Post) => void; on
 
   const handleImage = () => {
     fileRef.current?.click();
+  };
+
+  /** 上传视频：存入 IndexedDB 后插入 <video data-file-id> 标记 */
+  const handleVideoFile = async (file: File) => {
+    if (file.size > MAX_VIDEO_SIZE) {
+      setUploadMsg(`视频不能超过 ${formatBytes(MAX_VIDEO_SIZE)}`);
+      return;
+    }
+    if (usage.totalBytes + file.size > MAX_TOTAL_BYTES) {
+      setUploadMsg('附件总空间已满（200MB），请删除旧帖附件或清理浏览器存储');
+      return;
+    }
+    setUploadMsg('视频上传中…');
+    try {
+      const rec = await saveFile(file);
+      exec(
+        'insertHTML',
+        `<video data-file-id="${rec.id}" controls preload="metadata" style="max-width:100%;border-radius:8px;margin:4px 0;">（视频加载中…）</video>`
+      );
+      setUsage(await getFileUsage());
+      setUploadMsg(`✓ 视频已上传（${formatBytes(rec.size)}）`);
+    } catch {
+      setUploadMsg('视频上传失败，请重试');
+    }
+  };
+
+  /** 上传附件：存入 IndexedDB 后插入下载链接标记 */
+  const handleAttachmentFile = async (files: FileList) => {
+    for (const file of Array.from(files)) {
+      if (file.size > MAX_FILE_SIZE) {
+        setUploadMsg(`「${file.name}」超过 ${formatBytes(MAX_FILE_SIZE)}，已跳过`);
+        continue;
+      }
+      if (usage.totalBytes + file.size > MAX_TOTAL_BYTES) {
+        setUploadMsg('附件总空间已满（200MB），请删除旧帖附件或清理浏览器存储');
+        break;
+      }
+      setUploadMsg(`「${file.name}」上传中…`);
+      try {
+        const rec = await saveFile(file);
+        const safeName = rec.name.replace(/"/g, '');
+        exec(
+          'insertHTML',
+          `<p><a data-file-id="${rec.id}" data-file-name="${safeName}" contenteditable="false">📎 ${safeName}</a> <span style="color:#94a3b8;font-size:12px;">(${formatBytes(rec.size)})</span></p>`
+        );
+      } catch {
+        setUploadMsg(`「${file.name}」上传失败`);
+      }
+    }
+    setUsage(await getFileUsage().catch(() => usage));
+    setUploadMsg('✓ 附件已上传');
   };
 
   /** 插入表格：弹出输入行×列，生成带边框的 table */
@@ -692,16 +802,25 @@ function PostEditor({ onSubmit, onCancel }: { onSubmit: (post: Post) => void; on
     }
   };
 
-  const handleFile = (file: File) => {
-    if (file.size > 2 * 1024 * 1024) {
-      alert('图片大小不能超过 2MB');
+  /** 上传图片：同样存入 IndexedDB（避免 base64 撑爆 localStorage），插入 <img data-file-id> 标记 */
+  const handleFile = async (file: File) => {
+    if (file.size > 10 * 1024 * 1024) {
+      setUploadMsg('图片不能超过 10MB');
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      exec('insertImage', reader.result as string);
-    };
-    reader.readAsDataURL(file);
+    if (usage.totalBytes + file.size > MAX_TOTAL_BYTES) {
+      setUploadMsg('附件总空间已满（200MB），请删除旧帖附件或清理浏览器存储');
+      return;
+    }
+    setUploadMsg('图片上传中…');
+    try {
+      const rec = await saveFile(file);
+      exec('insertHTML', `<img data-file-id="${rec.id}" alt="${rec.name.replace(/"/g, '')}" style="max-width:100%;border-radius:8px;">`);
+      setUsage(await getFileUsage());
+      setUploadMsg(`✓ 图片已上传（${formatBytes(rec.size)}）`);
+    } catch {
+      setUploadMsg('图片上传失败，请重试');
+    }
   };
 
   const handleSubmit = () => {
@@ -830,7 +949,39 @@ function PostEditor({ onSubmit, onCancel }: { onSubmit: (post: Post) => void; on
             }}
           />
           <div className="mx-1 h-4 w-px bg-slate-300" />
+          <button className={btnCls} onClick={() => videoRef.current?.click()} title="上传视频（≤50MB）">🎬 视频</button>
+          <button className={btnCls} onClick={() => fileInputRef.current?.click()} title="上传附件（≤20MB，可多选）">📎 附件</button>
+          <input
+            ref={videoRef}
+            type="file"
+            accept="video/*"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) handleVideoFile(f);
+              e.target.value = '';
+            }}
+          />
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              if (e.target.files && e.target.files.length > 0) handleAttachmentFile(e.target.files);
+              e.target.value = '';
+            }}
+          />
+          <div className="mx-1 h-4 w-px bg-slate-300" />
           <button className={btnCls} onClick={() => exec('removeFormat')} title="清除格式">清除</button>
+        </div>
+
+        {/* 附件用量提示 */}
+        <div className="mb-2 flex items-center justify-between rounded-lg bg-slate-50 px-3 py-1.5 text-xs text-slate-500">
+          <span>
+            附件存储：已用 {formatBytes(usage.totalBytes)}（{usage.count} 个文件）/ 上限 {formatBytes(MAX_TOTAL_BYTES)}
+          </span>
+          {uploadMsg && <span className={uploadMsg.startsWith('✓') ? 'text-emerald-600' : 'text-amber-600'}>{uploadMsg}</span>}
         </div>
 
         {/* 编辑区 */}
@@ -839,7 +990,7 @@ function PostEditor({ onSubmit, onCancel }: { onSubmit: (post: Post) => void; on
           contentEditable
           suppressContentEditableWarning
           onPaste={handlePaste}
-          className={`min-h-[300px] rounded-lg border border-slate-300 p-3 text-sm outline-none focus:border-blue-400 [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_img]:max-w-full [&_img]:rounded-lg ${TABLE_STYLE}`}
+          className={`min-h-[300px] rounded-lg border border-slate-300 p-3 text-sm outline-none focus:border-blue-400 [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_img]:max-w-full [&_img]:rounded-lg [&_video]:max-w-full [&_video]:rounded-lg [&_video]:my-2 ${TABLE_STYLE}`}
           data-placeholder="在此输入帖子内容…支持文字、图片、链接、表格等…（可直接从 Excel / 网页复制表格粘贴）"
         />
 
@@ -860,7 +1011,7 @@ function PostEditor({ onSubmit, onCancel }: { onSubmit: (post: Post) => void; on
         </div>
 
         <p className="mt-2 text-xs text-slate-400">
-          提示：支持 JPG/PNG/WebP/GIF 图片（≤2MB）；可点击「⊞ 表格」插入表格，也可直接从 Excel / 网页复制表格后粘贴（格式自动保留）。帖子数据保存在本地浏览器中。
+          提示：支持图片（≤10MB）、视频（≤50MB）、附件（≤20MB，可多选），附件存储在浏览器本地数据库（IndexedDB，上限 200MB），删除帖子时附件自动清理。也可点击「⊞ 表格」或从 Excel / 网页复制表格粘贴。
         </p>
       </div>
     </div>
