@@ -167,21 +167,27 @@ export default function ChipDiagram({ chip, variant = 'full', scale, unified = f
   const padR = isMini ? 4 : 20;
   const padB = isMini ? 4 : 42;
 
-  const pw = pkgL * S;
-  const ph = pkgW * S;
-  let vbW = padL + pw + padR;
-  let vbH = padT + ph + padB;
-
-  // 统一尺寸模式：viewBox 固定为 9850HX 大小，封装在画布内居中
+  // 统一尺寸模式：画布固定为 9850HX 大小；封装按比例等比缩放适配画布（避免大封装被裁剪），
+  // 所有绘制统一使用 S_eff（含比例尺，保证物理比例一致）
+  let S_eff = S;
   let ox = 0;
   let oy = 0;
+  let vbW = padL + pkgL * S + padR;
+  let vbH = padT + pkgW * S + padB;
   if (unified && !isMini) {
+    const scale = Math.min(UNIFIED_VB_W / vbW, UNIFIED_VB_H / vbH);
+    S_eff = S * scale;
+    vbW = padL + pkgL * S_eff + padR;
+    vbH = padT + pkgW * S_eff + padB;
     ox = Math.max(0, (UNIFIED_VB_W - vbW) / 2);
     oy = Math.max(0, (UNIFIED_VB_H - vbH) / 2);
     vbW = UNIFIED_VB_W;
     vbH = UNIFIED_VB_H;
   }
 
+  const S_draw = S_eff;
+  const pw = pkgL * S_draw;
+  const ph = pkgW * S_draw;
   const px = padL + ox;
   const py = padT + oy;
 
@@ -226,8 +232,8 @@ export default function ChipDiagram({ chip, variant = 'full', scale, unified = f
           <rect x={px + 3} y={py + 3} width={pw - 6} height={ph - 6} rx={4} fill={`url(#${patternId})`} opacity={0.45} />
           {[0.35, 0.65].map((f) => (
             <g key={f}>
-              <circle cx={px} cy={py + ph * f} r={Math.max(3, 0.5 * S)} fill="#f6f7f9" stroke={substrateStroke} strokeWidth={1} />
-              <circle cx={px + pw} cy={py + ph * f} r={Math.max(3, 0.5 * S)} fill="#f6f7f9" stroke={substrateStroke} strokeWidth={1} />
+              <circle cx={px} cy={py + ph * f} r={Math.max(3, 0.5 * S_draw)} fill="#f6f7f9" stroke={substrateStroke} strokeWidth={1} />
+              <circle cx={px + pw} cy={py + ph * f} r={Math.max(3, 0.5 * S_draw)} fill="#f6f7f9" stroke={substrateStroke} strokeWidth={1} />
             </g>
           ))}
         </>
@@ -240,10 +246,10 @@ export default function ChipDiagram({ chip, variant = 'full', scale, unified = f
       {/* ===== Die 层 ===== */}
       {rects.map((r) => {
         const c = ROLE_COLORS[r.die.role];
-        const dx = px + r.x * S;
-        const dy = py + r.y * S;
-        const dw = r.w * S;
-        const dh = r.h * S;
+        const dx = px + r.x * S_draw;
+        const dy = py + r.y * S_draw;
+        const dw = r.w * S_draw;
+        const dh = r.h * S_draw;
         const showLabel = !isMini && dw >= 58 && dh >= 24;
         const showDimsLine = showLabel && dh >= 38;
         const maxChars = Math.floor(dw / 10);
@@ -343,11 +349,11 @@ export default function ChipDiagram({ chip, variant = 'full', scale, unified = f
         <>
           {/* 比例尺（10mm） */}
           <g stroke="#64748b" strokeWidth={2}>
-            <line x1={px} y1={barY} x2={px + 10 * S} y2={barY} />
+            <line x1={px} y1={barY} x2={px + 10 * S_draw} y2={barY} />
             <line x1={px} y1={barY - 4} x2={px} y2={barY + 4} strokeWidth={1.2} />
-            <line x1={px + 10 * S} y1={barY - 4} x2={px + 10 * S} y2={barY + 4} strokeWidth={1.2} />
+            <line x1={px + 10 * S_draw} y1={barY - 4} x2={px + 10 * S_draw} y2={barY + 4} strokeWidth={1.2} />
           </g>
-          <text x={px + 5 * S} y={barY + 15} textAnchor="middle" fontSize={10} fill="#64748b">
+          <text x={px + 5 * S_draw} y={barY + 15} textAnchor="middle" fontSize={10} fill="#64748b">
             10 mm
           </text>
           {/* 估算封装声明 */}

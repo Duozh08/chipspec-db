@@ -76,7 +76,14 @@ def norm_name(n):
 def year(release):
     return release[:4] if release and re.match(r'\d{4}', release) else ''
 
-# 旧条目索引：主 key=(brand, norm(displayName), year)，辅助 key=(brand, norm(model), year)
+def year_close(y1, y2):
+    """年份相等或相差 1 年以内（容忍评测/发售时间差异）"""
+    if not y1 or not y2:
+        return y1 == y2
+    return abs(int(y1) - int(y2)) <= 1
+
+# 旧条目索引：主 key=(brand, norm(displayName))，辅助 key=(brand, norm(model))，
+# 年份单独存放用于 ±1 年容差匹配
 # 品牌归一化：v3 的 alienware 独立品牌 → v4 并入 dell
 def norm_brand(b):
     return 'dell' if b == 'alienware' else b
@@ -84,28 +91,72 @@ def norm_brand(b):
 old_by_key = {}
 old_by_model_key = {}
 for r in records:
-    key = (norm_brand(r['brand']), norm_name(r['displayName']), year(r['release']))
-    old_by_key[key] = r
-    mkey = (norm_brand(r['brand']), norm_name(r.get('model', '')), year(r['release']))
+    key = (norm_brand(r['brand']), norm_name(r['displayName']))
+    old_by_key.setdefault(key, []).append(r)
+    mkey = (norm_brand(r['brand']), norm_name(r.get('model', '')))
     if mkey[1]:
-        old_by_model_key[mkey] = r
+        old_by_model_key.setdefault(mkey, []).append(r)
 
-# 新条目匹配：先按 displayName，再按 model
+# 新条目匹配：名称匹配 + 年份容差（先按 displayName，再按 model）
 mapped = {}
 matched = 0
 for item in new_items:
-    key = (item['brand'], norm_name(item['displayName']), year(item['release']))
-    rec = old_by_key.get(key)
-    if rec is None:
-        mkey = (item['brand'], norm_name(item.get('model', '')), year(item['release']))
-        rec = old_by_model_key.get(mkey) if mkey[1] else None
+    name_key = (item['brand'], norm_name(item['displayName']))
+    cands = old_by_key.get(name_key, [])
+    if not cands:
+        mkey = (item['brand'], norm_name(item.get('model', '')))
+        cands = old_by_model_key.get(mkey, [])
+    rec = None
+    if cands:
+        iy = year(item['release'])
+        # 优先完全同年份，其次 ±1 年
+        rec = next((r for r in cands if year(r['release']) == iy), None)
+        if rec is None:
+            rec = next((r for r in cands if year_close(year(r['release']), iy)), None)
     if rec:
         mapped[item['id']] = rec['stressTest']
         matched += 1
 
-print(f"匹配成功: {matched} 条")
+# 5. 手动补充：2026-08-06 全网搜索笔吧评测室/快科技等公开评测确认的实测数据
+# （自动匹配已覆盖的机型不覆盖，只补充缺失的热门机型）
+MANUAL_EXTRA = {
+    # 拯救者 R9000P 2024（R9 7945HX + RTX 4070 140W）— 笔吧评测室（超能模式）
+    'lenovo-r9000p-16arp9': {
+        'cpuPowerW': 112, 'cpuTempC': 94, 'cpuFreqGHz': 4.0,
+        'gpuPowerW': 140, 'gpuTempC': 85, 'gpuFreqMHz': 2370,
+        'dualCpuPowerW': 83, 'dualGpuPowerW': 120, 'dualCpuTempC': 95, 'dualGpuTempC': 84,
+        'note': '数据来源：笔吧评测室（超能模式，R9 7945HX + RTX 4070）',
+    },
+    # 机械革命 蛟龙16 Pro（R7 7745HX + RTX 4060 满血）— 综合评测
+    'mechrevo-16pro-jiaolong-16-pro': {
+        'cpuPowerW': 82, 'cpuTempC': 95, 'cpuFreqGHz': 4.3,
+        'gpuPowerW': 140, 'gpuTempC': 80, 'gpuFreqMHz': 2200,
+        'dualCpuPowerW': 45, 'dualGpuPowerW': 115, 'dualCpuTempC': 80, 'dualGpuTempC': 80,
+        'note': '数据来源：综合评测（R7 7745HX + RTX 4060 满血版，狂飙模式）',
+    },
+    # 微星 泰坦 GE78 HX（i9-13980HX + RTX 4080）— 快科技评测
+    'msi-ge78hx-ge78hx-13v': {
+        'cpuPowerW': 130, 'cpuTempC': 93, 'cpuFreqGHz': 3.9,
+        'gpuPowerW': 175, 'gpuTempC': 73, 'gpuFreqMHz': 1800,
+        'dualCpuPowerW': 75, 'dualGpuPowerW': 175, 'dualCpuTempC': 83, 'dualGpuTempC': 80,
+        'note': '数据来源：快科技评测（i9-13980HX + RTX 4080，狂暴模式 250W）',
+    },
+    # 拯救者 Y9000P 2024（i9-14900HX + RTX 4060 140W）— 笔吧评测室（野兽模式）
+    'lenovo-y9000p-16irx9': {
+        'cpuPowerW': 110, 'cpuTempC': 89, 'cpuFreqGHz': 3.5,
+        'gpuPowerW': 140, 'gpuTempC': 80, 'gpuFreqMHz': 2235,
+        'dualCpuPowerW': 65, 'dualGpuPowerW': 140, 'dualCpuTempC': 83, 'dualGpuTempC': 82,
+        'note': '数据来源：笔吧评测室（野兽模式，i9-14900HX + RTX 4060 满血）',
+    },
+}
+for nid, st in MANUAL_EXTRA.items():
+    if nid not in mapped:
+        mapped[nid] = st
+        matched += 1
+
+print(f"最终收录: {len(mapped)} 条（自动匹配 + 手动补充）")
 # 打印未匹配的旧条目名（用于检查）
-unmatched_keys = set(old_by_key.keys()) - {(i['brand'], norm_name(i['displayName']), year(i['release'])) for i in new_items}
+unmatched_keys = set(old_by_key.keys()) - {(i['brand'], norm_name(i['displayName'])) for i in new_items}
 print(f"旧数据未匹配: {len(unmatched_keys)}")
 for k in list(unmatched_keys)[:15]:
     print("   ", k)

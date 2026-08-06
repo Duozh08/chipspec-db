@@ -68,7 +68,12 @@ export default function SpecTable({ chip }: { chip: Chip }) {
         {SPEC_ROWS.map((row) => {
           const isDieDims = row.label === 'Die 长×宽';
           return (
-            <div key={row.label} className="grid grid-cols-[8.5rem_1fr] gap-4 px-4 py-2.5 text-sm">
+            <div
+              key={row.label}
+              className={`grid grid-cols-[8.5rem_1fr] gap-4 px-4 py-2.5 text-sm ${
+                isDieDims ? 'bg-red-50/70' : ''
+              }`}
+            >
               <dt className={`text-slate-500 ${isDieDims ? 'font-bold text-red-600' : ''}`}>{row.label}</dt>
               <dd className={`text-slate-800 ${isDieDims ? 'font-bold text-red-600' : ''}`}>{row.value(chip)}</dd>
             </div>
