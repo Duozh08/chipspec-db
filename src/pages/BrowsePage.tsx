@@ -1,6 +1,7 @@
 import { useSearchParams } from 'react-router-dom';
 import ChipCard from '../components/ChipCard';
 import FilterBar, { parseBrand, parseCategory, parseFormFactor } from '../components/FilterBar';
+import ScrollTopButton from '../components/ScrollTopButton';
 import { useChipFilters } from '../hooks/useChipFilters';
 import { sortByYearThenFavorites } from '../hooks/useFavorites';
 
@@ -31,6 +32,7 @@ export default function BrowsePage() {
           ))}
         </div>
       )}
+      <ScrollTopButton />
     </div>
   );
 }

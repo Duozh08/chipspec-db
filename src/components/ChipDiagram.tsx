@@ -142,10 +142,16 @@ export interface ChipDiagramProps {
   variant?: 'full' | 'mini';
   /** 每毫米像素数。full 默认 10，mini 默认 3.2。对比页请显式传相同值以保证真实比例 */
   scale?: number;
+  /** 统一尺寸模式（详情页）：画布固定为 Ryzen 9 9850HX 同款 viewBox，内部按真实比例居中绘制，保证卡片对齐 */
+  unified?: boolean;
   className?: string;
 }
 
-export default function ChipDiagram({ chip, variant = 'full', scale, className }: ChipDiagramProps) {
+/** 统一画布尺寸：按 Ryzen 9 9850HX（封装 40×40mm，S=10，full 模式）计算 */
+const UNIFIED_VB_W = 56 + 40 * 10 + 20; // padL + 40*S + padR
+const UNIFIED_VB_H = 56 + 40 * 10 + 42; // padT + 40*S + padB
+
+export default function ChipDiagram({ chip, variant = 'full', scale, unified = false, className }: ChipDiagramProps) {
   const rawId = useId().replace(/[:]/g, '');
   const S = scale ?? (variant === 'full' ? 10 : 3.2);
   const { pkgL, pkgW, pkgKnown, rects } = layoutChip(chip);
@@ -161,12 +167,23 @@ export default function ChipDiagram({ chip, variant = 'full', scale, className }
   const padR = isMini ? 4 : 20;
   const padB = isMini ? 4 : 42;
 
-  const px = padL;
-  const py = padT;
   const pw = pkgL * S;
   const ph = pkgW * S;
-  const vbW = padL + pw + padR;
-  const vbH = padT + ph + padB;
+  let vbW = padL + pw + padR;
+  let vbH = padT + ph + padB;
+
+  // 统一尺寸模式：viewBox 固定为 9850HX 大小，封装在画布内居中
+  let ox = 0;
+  let oy = 0;
+  if (unified && !isMini) {
+    ox = Math.max(0, (UNIFIED_VB_W - vbW) / 2);
+    oy = Math.max(0, (UNIFIED_VB_H - vbH) / 2);
+    vbW = UNIFIED_VB_W;
+    vbH = UNIFIED_VB_H;
+  }
+
+  const px = padL + ox;
+  const py = padT + oy;
 
   const style = chip.package.style;
   const substrateFill = style === 'bga' ? '#1e4634' : style === 'pga' ? '#e3d9c2' : '#e9e2d0';

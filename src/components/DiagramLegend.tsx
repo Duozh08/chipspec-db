@@ -1,5 +1,5 @@
 import type { Chip, DataQuality, DieInfo } from '../data/types';
-import { DATA_QUALITY_LABELS, fmtArea, fmtDieDims, fmtTransistors } from '../data/types';
+import { DATA_QUALITY_LABELS, fmtArea, fmtTransistors } from '../data/types';
 import { ROLE_COLORS } from './ChipDiagram';
 
 const QUALITY_STYLES: Record<DataQuality, string> = {
@@ -58,9 +58,8 @@ export function DieBreakdown({ chip }: { chip: Chip }) {
                 <span className="font-medium text-slate-800">{d.name}</span>
                 <span className="text-xs text-slate-400">{ROLE_COLORS[d.role].label}</span>
               </div>
-              <div className="mt-1 grid grid-cols-2 gap-x-6 gap-y-0.5 text-xs text-slate-500 sm:grid-cols-4">
+              <div className="mt-1 grid grid-cols-2 gap-x-6 gap-y-0.5 text-xs text-slate-500 sm:grid-cols-3">
                 <span>面积：{fmtArea(d.areaMm2)}</span>
-                <span className="font-bold text-red-600">长×宽：{fmtDieDims(d)}</span>
                 <span>制程：{d.process ?? '暂无数据'}</span>
                 <span>晶体管：{fmtTransistors(d.transistorsMillions)}</span>
               </div>

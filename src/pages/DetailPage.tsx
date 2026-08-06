@@ -153,21 +153,28 @@ export default function DetailPage() {
             <div className="mb-3 text-sm font-semibold text-slate-700">规格解读</div>
             <div className="space-y-2.5">
               {(() => {
-                const bars: { label: string; value: number | null; max: number; unit: string; color: string }[] = [
-                  { label: 'TDP 功耗', value: chip.tdp, max: 250, unit: ' W', color: 'bg-amber-500' },
-                  { label: 'Die 总面积', value: dieArea, max: 800, unit: ' mm²', color: 'bg-blue-500' },
-                  { label: '晶体管总数', value: chip.transistorsMillions != null ? chip.transistorsMillions / 1000 : null, max: 100, unit: ' B', color: 'bg-indigo-500' },
-                  { label: '满载温度', value: chip.loadTempRange ? Number.parseFloat(chip.loadTempRange) || null : null, max: 110, unit: ' °C', color: 'bg-red-500' },
+                // 温度范围解析："70-85°C" → 显示原文，条宽取中间值
+                const parseTemp = (s: string): { display: string; mid: number | null } => {
+                  const nums = s.match(/\d+(\.\d+)?/g)?.map(Number) ?? [];
+                  if (nums.length === 0) return { display: s, mid: null };
+                  return { display: s, mid: (Math.min(...nums) + Math.max(...nums)) / 2 };
+                };
+                const temp = chip.loadTempRange ? parseTemp(chip.loadTempRange) : null;
+                const transB = chip.transistorsMillions != null ? chip.transistorsMillions / 1000 : null;
+
+                const bars: { label: string; display: string; barValue: number | null; max: number; color: string }[] = [
+                  { label: 'TDP 功耗', display: chip.tdp != null ? `${chip.tdp} W` : '暂无数据', barValue: chip.tdp, max: 250, color: 'bg-amber-500' },
+                  { label: 'Die 总面积', display: dieArea != null ? `${dieArea} mm²` : '暂无数据', barValue: dieArea, max: 800, color: 'bg-blue-500' },
+                  { label: '晶体管总数', display: transB != null ? `${Math.round(transB * 10) / 10} B` : '暂无数据', barValue: transB, max: 100, color: 'bg-indigo-500' },
+                  { label: '满载温度', display: temp?.display ?? '暂无数据', barValue: temp?.mid ?? null, max: 110, color: 'bg-red-500' },
                 ];
                 return bars.map((b) => {
-                  const pct = b.value == null ? 0 : Math.min(100, Math.max(2, (b.value / b.max) * 100));
+                  const pct = b.barValue == null ? 0 : Math.min(100, Math.max(2, (b.barValue / b.max) * 100));
                   return (
                     <div key={b.label}>
                       <div className="mb-1 flex items-baseline justify-between text-xs">
                         <span className="text-slate-500">{b.label}</span>
-                        <span className="font-medium text-slate-700">
-                          {b.value == null ? '暂无数据' : `${Math.round(b.value * 10) / 10}${b.unit}`}
-                        </span>
+                        <span className="font-medium text-slate-700">{b.display}</span>
                       </div>
                       <div className="h-2 overflow-hidden rounded-full bg-slate-100">
                         <div className={`h-full rounded-full ${b.color}`} style={{ width: `${pct}%` }} />
@@ -191,13 +198,15 @@ export default function DetailPage() {
         </div>
       </div>
 
-      {/* Die 明细 + 同代际/同品牌芯片（并排对齐） */}
-      <div className="grid gap-5 lg:grid-cols-[1.5fr_1fr]">
+      {/* Die 明细 + 同代际/同品牌芯片（等宽两列，标题栏样式统一） */}
+      <div className="grid items-stretch gap-5 lg:grid-cols-2">
         <DieBreakdown chip={chip} />
         {related.length > 0 && (
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="mb-3 text-sm font-semibold text-slate-700">{relatedTitle}</div>
-            <div className="space-y-2">
+          <div className="flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-100 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700">
+              {relatedTitle}
+            </div>
+            <div className="flex-1 space-y-2 p-4">
               {related.map((s) => (
                 <Link
                   key={s.id}

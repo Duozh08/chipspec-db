@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { allLaptops } from '../data/laptops';
 import { LAPTOP_BRAND_LABELS, cpuPlatform } from '../data/types';
 import type { LaptopBrand } from '../data/types';
+import ScrollTopButton from '../components/ScrollTopButton';
 import { sortByYearThenFavorites, isFavorited } from '../hooks/useFavorites';
 
 const BRAND_OPTIONS: { value: LaptopBrand | ''; label: string }[] = [
@@ -271,6 +272,7 @@ export default function LaptopListPage() {
           })}
         </div>
       )}
+      <ScrollTopButton />
     </div>
   );
 }

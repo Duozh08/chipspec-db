@@ -16,7 +16,8 @@
 - **游戏本分组规则（2026-08-06 起）**：gen-data.py 按 **(品牌, 规范化名称, 型号)** 分组；规范化 = 去空格/去末尾年份/去 AI元启/酷睿版/锐龙版。当前 345 款。注意同型号可能对应多个不同产品（联想 16IRX9 = Y7000P+Y9000P+Y9000K），必须按规范名分开，不能按 (品牌,型号) 一刀切
 - **注意**：规范化后游戏本 id 不含年份（如 `lenovo-y9000p-16irx9`）；首页 FEATURED_LAPTOPS 等硬编码 id 引用，数据重生成后需核对
 - **本地持久化**：收藏 `chipspec-favorites`、芯片上传图 `chipspec-chip-photos`、论坛帖子 `chipspec-repair-posts`（均 localStorage）
-- **注意**：v4 游戏本数据源自 Excel，不含烤机 stressTest 数据（Excel 无该列），详情页烤机区块自动隐藏
+- **烤机数据（2026-08-06 恢复）**：Excel 无 stressTest 列 → 独立文件 `src/data/stress-tests.ts`（Record<新id, StressTestData>，92 条），由 `scripts/restore-stress-tests.py` 从 git v3(53dfa99) 按 (品牌 alienware→dell, 规范化名称/型号, 年份) 匹配生成；**每次重跑 gen-data.py 后需重跑 restore 脚本**；详情页烤机区块只在该表有数据时显示，GPU 方案卡解析型号字符串功耗 "(140W)"
+- **芯片详情页尺寸图**：ChipDiagram `unified` prop 固定 viewBox 476×498（9850HX 口径），封装居中；对比页不启用
 
 ## 用户偏好（本项目）
 - 中文界面；中国用户习惯
