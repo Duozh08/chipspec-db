@@ -1,0 +1,9 @@
+{
+  "name": "collect",
+  "version": "1.0.0",
+  "description": "接收收录请求，写库并触发 AI 补全",
+  "main": "index.js",
+  "dependencies": {
+    "@cloudbase/node-sdk": "^3.2.1"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "autoFill",
+  "version": "1.0.0",
+  "description": "调用 DeepSeek 联网补全芯片/游戏本规格，按站内数据结构写回",
+  "main": "index.js",
+  "dependencies": {
+    "@cloudbase/node-sdk": "^3.2.1"
+  }
+}
