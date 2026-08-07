@@ -64,6 +64,26 @@ export function removePendingItem(id: string) {
   notifyPendingChanged();
 }
 
+/** 导出待补全清单（下载 JSON，供 AI 数据管道读取后全网搜索补全规格） */
+export function exportPendingItems() {
+  const items = loadPendingItems();
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    source: 'ChipSpec DB 截图识别收录',
+    note: 'AI 数据管道：按 items[].name 全网搜索规格，按网站 Chip/Laptop 格式生成数据',
+    items,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'chipspec-pending-requests.json';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 /** 品牌猜测：从文本识别常见品牌关键词 */
 export function guessBrand(text: string): string {
   const t = text.toLowerCase();

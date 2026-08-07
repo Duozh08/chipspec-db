@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BRAND_LABELS, LAPTOP_BRAND_LABELS } from '../data/types';
-import { addPendingItem, guessBrand, loadPendingItems, removePendingItem } from '../utils/pendingStore';
+import { addPendingItem, exportPendingItems, guessBrand, loadPendingItems, removePendingItem } from '../utils/pendingStore';
 import type { PendingItem } from '../utils/pendingStore';
 import { matchChipsInText, matchLaptopsInText, extractUnknownCandidates } from '../utils/modelMatcher';
 import type { UnknownCandidate } from '../utils/modelMatcher';
@@ -138,22 +138,18 @@ export default function RecognizeModal({ onClose }: { onClose: () => void }) {
     }
   };
 
-  /** 立即收录（无需填表）：自动判断类别，即时收录并全网搜索 */
+  /** 立即收录（无需填表）：自动判断类别，进入 AI 自动补全队列（规格由 AI 全网搜索后按站内格式填充） */
   const handleCollect = (cand: UnknownCandidate) => {
     if (collectedNames[cand.name]) return;
     addPendingItem({
       name: cand.name,
       category: cand.type,
       brand: guessBrand(cand.name),
-      note: '截图识别自动收录',
+      note: '截图识别自动收录，等待 AI 补全',
     });
     setPendingItems(loadPendingItems());
     setCollectedNames((prev) => ({ ...prev, [cand.name]: true }));
-    setSavedMsg(`已收录「${cand.name}」（${cand.type === 'chip' ? '芯片' : '游戏本'}），正在为你打开全网搜索结果核对规格…`);
-    const query = cand.type === 'chip'
-      ? `${cand.name} 处理器 规格 参数 评测`
-      : `${cand.name} 游戏本 配置 参数 评测`;
-    window.open(`https://cn.bing.com/search?q=${encodeURIComponent(query)}`, '_blank', 'noopener');
+    setSavedMsg(`已收录「${cand.name}」（${cand.type === 'chip' ? '芯片' : '游戏本'}），AI 已自动开始信息获取，规格将按站内格式补全`);
     setTimeout(() => setSavedMsg(''), 8000);
   };
 
@@ -392,7 +388,7 @@ export default function RecognizeModal({ onClose }: { onClose: () => void }) {
                           )}
                         </div>
                         {collectedNames[u.name] ? (
-                          <span className="shrink-0 text-[11px] text-emerald-600">已提交并全网搜索 ↗</span>
+                          <span className="shrink-0 text-[11px] text-emerald-600">AI 自动补全中…</span>
                         ) : (
                           <button
                             onClick={() => handleCollect(u)}
@@ -415,12 +411,20 @@ export default function RecognizeModal({ onClose }: { onClose: () => void }) {
           )}
         </div>
 
-        {/* 底部：已收录清单 + 隐私 */}
+        {/* 底部：已收录清单 + 导出 */}
         <div className="shrink-0 border-t border-slate-100 bg-slate-50/70 px-5 py-3">
           {pendingItems.length > 0 ? (
             <div className="mb-2">
               <div className="mb-1.5 flex items-center justify-between">
-                <span className="text-xs font-semibold text-slate-600">📌 已收录清单（本机 {pendingItems.length} 条，即时生效）</span>
+                <span className="text-xs font-semibold text-slate-600">📌 已收录清单（本机 {pendingItems.length} 条，AI 自动补全中）</span>
+                <button
+                  type="button"
+                  onClick={exportPendingItems}
+                  className="rounded-md border border-blue-300 bg-white px-2.5 py-1 text-[11px] font-medium text-blue-600 transition hover:bg-blue-50"
+                  title="导出待补全清单，供 AI 数据管道读取后按站内格式生成数据"
+                >
+                  ⬇ 导出待补全清单
+                </button>
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {pendingItems.map((p) => (
@@ -442,7 +446,7 @@ export default function RecognizeModal({ onClose }: { onClose: () => void }) {
             </div>
           ) : null}
           <p className="text-[11px] leading-5 text-slate-400">
-            识别在本机浏览器完成，图片不上传；提交收录后即时生效并自动打开全网搜索供核对规格，无需等待审核。
+            识别在本机浏览器完成，图片不上传。点击收录后进入 AI 自动补全队列：AI 将全网搜索该型号规格，并按网站芯片 / 游戏本格式自动生成数据，随下次数据更新上线（导出清单可加速处理）。
           </p>
         </div>
       </div>
