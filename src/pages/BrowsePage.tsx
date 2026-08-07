@@ -2,6 +2,7 @@ import { useSearchParams } from 'react-router-dom';
 import ChipCard from '../components/ChipCard';
 import FilterBar, { parseBrand, parseCategory, parseFormFactor } from '../components/FilterBar';
 import ScrollTopButton from '../components/ScrollTopButton';
+import NewCatalogSection from '../components/NewCatalogSection';
 import { useChipFilters } from '../hooks/useChipFilters';
 import { sortByYearThenFavorites } from '../hooks/useFavorites';
 
@@ -20,6 +21,7 @@ export default function BrowsePage() {
 
   return (
     <div className="space-y-4">
+      <NewCatalogSection category="chip" />
       <FilterBar count={sorted.length} />
       {sorted.length === 0 ? (
         <div className="rounded-xl border border-dashed border-slate-300 bg-white py-16 text-center text-slate-400">

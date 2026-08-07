@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { BRAND_LABELS, LAPTOP_BRAND_LABELS } from '../data/types';
 import { addPendingItem, exportPendingItems, guessBrand, loadPendingItems, removePendingItem } from '../utils/pendingStore';
 import type { PendingItem } from '../utils/pendingStore';
+import { addLocalCatalogItem } from '../utils/localCatalog';
 import { matchChipsInText, matchLaptopsInText, extractUnknownCandidates } from '../utils/modelMatcher';
 import type { UnknownCandidate } from '../utils/modelMatcher';
 
@@ -138,18 +139,21 @@ export default function RecognizeModal({ onClose }: { onClose: () => void }) {
     }
   };
 
-  /** 立即收录（无需填表）：自动判断类别，进入 AI 自动补全队列（规格由 AI 全网搜索后按站内格式填充） */
-  const handleCollect = (cand: UnknownCandidate) => {
+  /** 立即收录（全自动）：生成本地条目（自动获取信息）+ 同步待收录徽章 */
+  const handleCollect = async (cand: UnknownCandidate) => {
     if (collectedNames[cand.name]) return;
+    setCollectedNames((prev) => ({ ...prev, [cand.name]: true }));
+    const brand = guessBrand(cand.name);
+    // 自动收录到本地库（wiki best-effort 获取简介），New 标记 24h 在列表显示
+    await addLocalCatalogItem(cand.name, cand.type, brand);
     addPendingItem({
       name: cand.name,
       category: cand.type,
-      brand: guessBrand(cand.name),
-      note: '截图识别自动收录，等待 AI 补全',
+      brand,
+      note: '自动收录，AI 补全中',
     });
     setPendingItems(loadPendingItems());
-    setCollectedNames((prev) => ({ ...prev, [cand.name]: true }));
-    setSavedMsg(`已收录「${cand.name}」（${cand.type === 'chip' ? '芯片' : '游戏本'}），AI 已自动开始信息获取，规格将按站内格式补全`);
+    setSavedMsg(`已收录「${cand.name}」（${cand.type === 'chip' ? '芯片' : '游戏本'}），已自动获取信息并按站内格式生成，列表将显示 New 标记（24 小时）`);
     setTimeout(() => setSavedMsg(''), 8000);
   };
 

@@ -5,6 +5,7 @@ import { stressTests } from '../data/stress-tests';
 import { LAPTOP_BRAND_LABELS, cpuPlatform } from '../data/types';
 import type { LaptopBrand } from '../data/types';
 import ScrollTopButton from '../components/ScrollTopButton';
+import NewCatalogSection from '../components/NewCatalogSection';
 import { sortByYearThenFavorites, isFavorited } from '../hooks/useFavorites';
 
 const BRAND_OPTIONS: { value: LaptopBrand | ''; label: string }[] = [
@@ -109,6 +110,7 @@ export default function LaptopListPage() {
 
   return (
     <div className="space-y-4">
+      <NewCatalogSection category="laptop" />
       <Link
         to="/"
         className="inline-block text-sm text-slate-500 hover:text-blue-600"
