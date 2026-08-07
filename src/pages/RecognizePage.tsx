@@ -33,7 +33,10 @@ export default function RecognizePage() {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [recognizing, setRecognizing] = useState(false);
-  const [progress, setProgress] = useState<{ status: string; pct: number }>({ status: '', pct: 0 });
+  const [phase, setPhase] = useState<'idle' | 'loading' | 'downloading' | 'recognizing' | 'error'>('idle');
+  const [progress, setProgress] = useState(0);
+  const [statusText, setStatusText] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
   const [text, setText] = useState('');
   const [chipHits, setChipHits] = useState<MatchChipHit[]>([]);
   const [laptopHits, setLaptopHits] = useState<MatchLaptopHit[]>([]);
@@ -81,7 +84,10 @@ export default function RecognizePage() {
     setChipHits([]);
     setLaptopHits([]);
     setUnknowns([]);
-    setProgress({ status: '', pct: 0 });
+    setPhase('idle');
+    setProgress(0);
+    setStatusText('');
+    setErrorMsg('');
   };
 
   // 剪贴板粘贴（截图后 Ctrl+V）
@@ -118,28 +124,68 @@ export default function RecognizePage() {
   const handleRecognize = async () => {
     if (!file) return;
     setRecognizing(true);
-    setProgress({ status: '加载 OCR 引擎…', pct: 0 });
+    setPhase('loading');
+    setProgress(0);
+    setStatusText('准备识别引擎…');
+    setErrorMsg('');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let worker: any = null;
+    let timer: number | undefined;
     try {
-      // 动态加载 Tesseract（避免主包膨胀），语言包从 CDN 获取
+      // 动态加载 Tesseract（避免主包膨胀）；语言包/core 从 CDN 获取
       const Tesseract = (await import('tesseract.js')).default;
-      const worker = await Tesseract.createWorker(['chi_sim', 'eng'], 1, {
-        logger: (m: { status: string; progress: number }) => {
-          const label =
-            m.status === 'loading tesseract core' ? '加载识别引擎…' :
-            m.status === 'initializing tesseract' ? '初始化引擎…' :
-            m.status === 'loading language traineddata' ? '下载中文语言包…' :
-            m.status === 'recognizing text' ? '识别中…' : m.status;
-          setProgress({ status: label, pct: Math.round(m.progress * 100) });
-        },
+
+      // 超时兜底：core/语言包下载慢或网络异常时给出明确提示（下载阶段无进度事件，不能无限等待）
+      const timeout = new Promise<never>((_, reject) => {
+        timer = window.setTimeout(
+          () => reject(new Error('加载超时：识别引擎或中文语言包下载较慢（约 12MB），请检查网络后重试')),
+          150000
+        );
       });
-      const { data } = await worker.recognize(file);
-      await worker.terminate();
-      setText(data.text || '（未识别到文字，请重试或手动输入型号）');
-      runMatch(data.text || '');
+
+      const runOcr = (async () => {
+        worker = await Tesseract.createWorker(['chi_sim', 'eng'], 1, {
+          logger: (m: { status: string; progress: number }) => {
+            if (m.status === 'loading tesseract core') {
+              setPhase('loading');
+              setStatusText(`下载识别引擎… ${Math.round(m.progress * 100)}%`);
+            } else if (m.status === 'initializing tesseract') {
+              setPhase('loading');
+              setStatusText('初始化识别引擎…');
+            } else if (m.status === 'loading language traineddata') {
+              // 语言包下载期间无进度事件，显示动画提示
+              setPhase('downloading');
+              setStatusText('下载中文语言包（约 12MB）… 首次使用需下载，之后自动缓存');
+              setProgress(Math.round(m.progress * 100));
+            } else if (m.status === 'recognizing text') {
+              setPhase('recognizing');
+              setStatusText('识别中…');
+              setProgress(Math.round(m.progress * 100));
+            }
+          },
+        });
+        const { data } = await worker.recognize(file);
+        return data.text || '';
+      })();
+
+      const ocrText = await Promise.race([runOcr, timeout]);
+      setText(ocrText || '（未识别到文字，请重试或手动输入型号）');
+      runMatch(ocrText || '');
+      setPhase('idle');
     } catch (err) {
       console.error(err);
-      setText('识别失败：' + (err instanceof Error ? err.message : String(err)));
+      setPhase('error');
+      setErrorMsg(err instanceof Error ? err.message : String(err));
+      setText('');
     } finally {
+      if (timer !== undefined) clearTimeout(timer);
+      if (worker) {
+        try {
+          await worker.terminate();
+        } catch {
+          /* ignore */
+        }
+      }
       setRecognizing(false);
     }
   };
@@ -227,14 +273,46 @@ export default function RecognizePage() {
 
           {recognizing && (
             <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <div className="mb-2 flex justify-between text-xs text-slate-500">
-                <span>{progress.status}</span>
-                <span>{progress.pct}%</span>
+              <div className="mb-2 flex items-center justify-between gap-3 text-xs text-slate-600">
+                <span className="flex min-w-0 items-center gap-2">
+                  {phase !== 'recognizing' && (
+                    <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 animate-spin text-blue-500" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                      <path d="M12 3a9 9 0 1 0 9 9" />
+                    </svg>
+                  )}
+                  <span className="truncate">{statusText}</span>
+                </span>
+                {phase === 'recognizing' && <span className="shrink-0">{progress}%</span>}
               </div>
-              <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-                <div className="h-full rounded-full bg-blue-500 transition-all" style={{ width: `${progress.pct}%` }} />
-              </div>
-              <p className="mt-2 text-xs text-slate-400">首次识别需下载语言包（约 10MB），请稍候</p>
+              {/* 下载/加载阶段：不确定进度动画；识别阶段：真实进度条 */}
+              {phase === 'recognizing' ? (
+                <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                  <div className="h-full rounded-full bg-blue-500 transition-all" style={{ width: `${progress}%` }} />
+                </div>
+              ) : (
+                <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                  <div className="h-full w-1/3 animate-pulse rounded-full bg-blue-400" />
+                </div>
+              )}
+              <p className="mt-2 text-xs text-slate-400">
+                首次使用需从 CDN 下载识别引擎与中文语言包（合计约 15MB），下载完成后自动缓存，后续识别无需重复下载；图片仅在本机处理，不会上传。
+              </p>
+            </div>
+          )}
+
+          {/* 识别失败提示 */}
+          {phase === 'error' && !recognizing && (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+              <div className="text-sm font-medium text-red-700">⚠️ 识别失败</div>
+              <p className="mt-1 text-xs leading-5 text-red-600">{errorMsg}</p>
+              {file && (
+                <button
+                  onClick={handleRecognize}
+                  className="mt-2 rounded-md border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+                >
+                  ↻ 重试识别
+                </button>
+              )}
             </div>
           )}
 
