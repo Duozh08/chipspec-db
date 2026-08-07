@@ -88,17 +88,35 @@ export function matchLaptopsInText(text: string): MatchResult<Laptop>[] {
 }
 
 /** 从文本中提取"疑似未收录型号"的候选 token（含数字+字母/中文，排除纯数字年份等） */
-export function extractUnknownCandidates(text: string, limit = 8): string[] {
+export interface UnknownCandidate {
+  name: string;
+  /** 类型猜测：chip / laptop */
+  type: 'chip' | 'laptop';
+}
+
+/** 候选类型猜测：芯片关键词优先，其次游戏本关键词，默认游戏本 */
+export function guessCandidateType(name: string): 'chip' | 'laptop' {
+  if (/rtx|gtx|rx\d|core|ryzen|i\d-\d|锐龙|酷睿|geforce|radeon|udna/i.test(name)) return 'chip';
+  if (
+    /拯救者|天选|枪神|魔霸|暗影|光影|蛟龙|极光|旷世|掠夺者|泰坦|战神|战斧|灵刃|外星人|联想|华硕|惠普|机械革命|神舟|雷神|机械师|荣耀|小米/i.test(
+      name
+    )
+  )
+    return 'laptop';
+  return 'laptop';
+}
+
+export function extractUnknownCandidates(text: string, limit = 8): UnknownCandidate[] {
   const tokens = tokenize(text);
   const known = new Set<string>();
   matchChipsInText(text).forEach((r) => known.add(r.matchedText));
   matchLaptopsInText(text).forEach((r) => known.add(r.matchedText));
-  const cands: string[] = [];
+  const cands: UnknownCandidate[] = [];
   for (const tok of tokens) {
     if (known.has(tok)) continue;
     // 型号特征：含数字 + 含字母或中文（排除纯数字年份/功耗） + 长度 4~20
     if (/\d/.test(tok) && /[a-z\u4e00-\u9fff]/.test(tok) && tok.length >= 4 && tok.length <= 20) {
-      if (!cands.includes(tok)) cands.push(tok);
+      if (!cands.some((c) => c.name === tok)) cands.push({ name: tok, type: guessCandidateType(tok) });
     }
   }
   return cands.slice(0, limit);

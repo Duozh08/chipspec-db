@@ -4,6 +4,7 @@ import { BRAND_LABELS, LAPTOP_BRAND_LABELS } from '../data/types';
 import { addPendingItem, guessBrand, loadPendingItems, removePendingItem } from '../utils/pendingStore';
 import type { PendingItem } from '../utils/pendingStore';
 import { matchChipsInText, matchLaptopsInText, extractUnknownCandidates } from '../utils/modelMatcher';
+import type { UnknownCandidate } from '../utils/modelMatcher';
 
 export default function RecognizeModal({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
@@ -17,12 +18,10 @@ export default function RecognizeModal({ onClose }: { onClose: () => void }) {
   const [text, setText] = useState('');
   const [chipHits, setChipHits] = useState<{ id: string; model: string; brand: string; category: string; matchedText: string }[]>([]);
   const [laptopHits, setLaptopHits] = useState<{ id: string; name: string; model: string; brand: string; year: string; matchedText: string }[]>([]);
-  const [unknowns, setUnknowns] = useState<string[]>([]);
+  const [unknowns, setUnknowns] = useState<UnknownCandidate[]>([]);
   const [pendingItems, setPendingItems] = useState<PendingItem[]>(loadPendingItems);
-  const [formFor, setFormFor] = useState<string | null>(null);
-  const [pendingName, setPendingName] = useState('');
-  const [pendingCategory, setPendingCategory] = useState<'chip' | 'laptop'>('chip');
-  const [pendingNote, setPendingNote] = useState('');
+  /** 已收录的候选名（点击立即收录后显示收录状态） */
+  const [collectedNames, setCollectedNames] = useState<Record<string, true>>({});
   const [savedMsg, setSavedMsg] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pasteRef = useRef<HTMLDivElement>(null);
@@ -139,25 +138,21 @@ export default function RecognizeModal({ onClose }: { onClose: () => void }) {
     }
   };
 
-  const handleSubmitPending = () => {
-    const name = pendingName.trim();
-    if (!name) return;
+  /** 立即收录（无需填表）：自动判断类别，即时收录并全网搜索 */
+  const handleCollect = (cand: UnknownCandidate) => {
+    if (collectedNames[cand.name]) return;
     addPendingItem({
-      name,
-      category: pendingCategory,
-      brand: guessBrand(name),
-      note: pendingNote.trim(),
+      name: cand.name,
+      category: cand.type,
+      brand: guessBrand(cand.name),
+      note: '截图识别自动收录',
     });
     setPendingItems(loadPendingItems());
-    setFormFor(null);
-    setPendingName('');
-    setPendingCategory('chip');
-    setPendingNote('');
-    setSavedMsg(`已收录「${name}」，正在为你打开全网搜索结果核对规格…`);
-    // 自动全网搜索该型号（新窗口）
-    const query = pendingCategory === 'chip'
-      ? `${name} 处理器 规格 参数 评测`
-      : `${name} 游戏本 配置 参数 评测`;
+    setCollectedNames((prev) => ({ ...prev, [cand.name]: true }));
+    setSavedMsg(`已收录「${cand.name}」（${cand.type === 'chip' ? '芯片' : '游戏本'}），正在为你打开全网搜索结果核对规格…`);
+    const query = cand.type === 'chip'
+      ? `${cand.name} 处理器 规格 参数 评测`
+      : `${cand.name} 游戏本 配置 参数 评测`;
     window.open(`https://cn.bing.com/search?q=${encodeURIComponent(query)}`, '_blank', 'noopener');
     setTimeout(() => setSavedMsg(''), 8000);
   };
@@ -179,7 +174,6 @@ export default function RecognizeModal({ onClose }: { onClose: () => void }) {
         {/* 头部 */}
         <div className="flex shrink-0 items-center justify-between border-b border-slate-100 px-5 py-3.5">
           <div className="flex items-center gap-2.5">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white">📷</span>
             <div>
               <div className="text-sm font-bold text-slate-900">截图识别</div>
               <div className="text-[11px] text-slate-400">识别芯片 / 游戏本型号，自动匹配站内数据</div>
@@ -370,7 +364,7 @@ export default function RecognizeModal({ onClose }: { onClose: () => void }) {
                 </div>
               )}
 
-              {/* 未收录候选 */}
+              {/* 未收录候选（区分芯片/游戏本，点击直接收录） */}
               {unknowns.length > 0 && (
                 <div>
                   <div className="mb-2 flex items-center gap-2">
@@ -379,56 +373,36 @@ export default function RecognizeModal({ onClose }: { onClose: () => void }) {
                   </div>
                   <div className="space-y-2">
                     {unknowns.map((u) => (
-                      <div key={u} className="flex items-center justify-between gap-2 rounded-lg border border-amber-100 bg-amber-50/50 px-3 py-2">
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-medium text-amber-900">{u}</div>
-                          <div className="text-[11px] text-amber-600">站内暂未收录</div>
+                      <div key={u.name} className="flex items-center justify-between gap-2 rounded-lg border border-amber-100 bg-amber-50/50 px-3 py-2">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span
+                            className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                              u.type === 'chip'
+                                ? 'bg-blue-100 text-blue-700'
+                                : 'bg-violet-100 text-violet-700'
+                            }`}
+                          >
+                            {u.type === 'chip' ? '芯片' : '游戏本'}
+                          </span>
+                          <span className="truncate text-sm font-medium text-amber-900">{u.name}</span>
+                          {collectedNames[u.name] && (
+                            <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
+                              ✓ 已收录
+                            </span>
+                          )}
                         </div>
-                        <button
-                          onClick={() => {
-                            setFormFor(u);
-                            setPendingName(u);
-                            setPendingCategory(u.toLowerCase().match(/rtx|gtx|rx|core|ryzen|i\d|锐龙/) ? 'chip' : 'laptop');
-                          }}
-                          className="shrink-0 rounded-md bg-amber-600 px-3 py-1 text-xs font-medium text-white transition hover:bg-amber-700"
-                        >
-                          立即收录
-                        </button>
+                        {collectedNames[u.name] ? (
+                          <span className="shrink-0 text-[11px] text-emerald-600">已提交并全网搜索 ↗</span>
+                        ) : (
+                          <button
+                            onClick={() => handleCollect(u)}
+                            className="shrink-0 rounded-md bg-amber-600 px-3 py-1 text-xs font-medium text-white transition hover:bg-amber-700"
+                          >
+                            立即收录
+                          </button>
+                        )}
                       </div>
                     ))}
-                  </div>
-                </div>
-              )}
-
-              {/* 收录表单 */}
-              {formFor && (
-                <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-4">
-                  <div className="mb-3 text-sm font-semibold text-blue-800">📋 收录「{formFor}」</div>
-                  <div className="space-y-2.5">
-                    <input
-                      value={pendingName}
-                      onChange={(e) => setPendingName(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-400"
-                      placeholder="型号名称"
-                    />
-                    <div className="flex gap-3">
-                      <label className="flex items-center gap-1.5 text-sm text-slate-600">
-                        <input type="radio" checked={pendingCategory === 'chip'} onChange={() => setPendingCategory('chip')} /> 芯片
-                      </label>
-                      <label className="flex items-center gap-1.5 text-sm text-slate-600">
-                        <input type="radio" checked={pendingCategory === 'laptop'} onChange={() => setPendingCategory('laptop')} /> 游戏本
-                      </label>
-                    </div>
-                    <input
-                      value={pendingNote}
-                      onChange={(e) => setPendingNote(e.target.value)}
-                      placeholder="补充说明（可选）"
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-400"
-                    />
-                    <div className="flex justify-end gap-2">
-                      <button onClick={() => setFormFor(null)} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50">取消</button>
-                      <button onClick={handleSubmitPending} className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700">提交并全网搜索</button>
-                    </div>
                   </div>
                 </div>
               )}

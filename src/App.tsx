@@ -39,7 +39,7 @@ export default function App() {
       <ScrollToTop />
       <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3">
-          <Link to="/" className="flex items-baseline gap-2">
+          <Link to="/" className="flex items-center gap-2">
             <span className="text-lg font-bold tracking-tight text-slate-900">芯片规格数据库</span>
             <span className="hidden text-xs text-slate-400 sm:inline">ChipSpec DB</span>
           </Link>
@@ -82,7 +82,7 @@ export default function App() {
               onClick={openRecognize}
               className="rounded-lg px-3 py-1.5 text-slate-600 transition hover:bg-slate-100"
             >
-              📷 识别
+              识别
             </button>
             {/* 待收录提示（右上角） */}
             {pendingCount > 0 && (
