@@ -38,6 +38,15 @@ function save(items: PendingItem[]) {
   }
 }
 
+/** 通知各组件待收录清单已变化（同页自定义事件 + 跨页 storage 事件） */
+export function notifyPendingChanged() {
+  try {
+    window.dispatchEvent(new Event('chipspec-pending-updated'));
+  } catch {
+    /* ignore */
+  }
+}
+
 export function addPendingItem(item: Omit<PendingItem, 'id' | 'createdAt'>): PendingItem {
   const full: PendingItem = { ...item, id: `pend-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, createdAt: new Date().toISOString() };
   const items = loadPendingItems();
@@ -46,11 +55,13 @@ export function addPendingItem(item: Omit<PendingItem, 'id' | 'createdAt'>): Pen
     items.unshift(full);
     save(items);
   }
+  notifyPendingChanged();
   return full;
 }
 
 export function removePendingItem(id: string) {
   save(loadPendingItems().filter((i) => i.id !== id));
+  notifyPendingChanged();
 }
 
 /** 品牌猜测：从文本识别常见品牌关键词 */

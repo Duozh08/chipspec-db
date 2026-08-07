@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import HomePage from './pages/HomePage';
 import BrowsePage from './pages/BrowsePage';
@@ -7,8 +7,9 @@ import ComparePage from './pages/ComparePage';
 import LaptopListPage from './pages/LaptopListPage';
 import LaptopDetailPage from './pages/LaptopDetailPage';
 import RepairPage from './pages/RepairPage';
-import RecognizePage from './pages/RecognizePage';
 import CompareTray from './components/CompareTray';
+import { useRecognize } from './context/RecognizeContext';
+import { loadPendingItems } from './utils/pendingStore';
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -19,6 +20,20 @@ function ScrollToTop() {
 }
 
 export default function App() {
+  const { open: openRecognize } = useRecognize();
+  const [pendingCount, setPendingCount] = useState(loadPendingItems().length);
+
+  // 待收录清单变化时更新右上角徽标
+  useEffect(() => {
+    const update = () => setPendingCount(loadPendingItems().length);
+    window.addEventListener('chipspec-pending-updated', update);
+    window.addEventListener('storage', update);
+    return () => {
+      window.removeEventListener('chipspec-pending-updated', update);
+      window.removeEventListener('storage', update);
+    };
+  }, []);
+
   return (
     <div className="min-h-screen">
       <ScrollToTop />
@@ -62,14 +77,28 @@ export default function App() {
             >
               维修
             </NavLink>
-            <NavLink
-              to="/recognize"
-              className={({ isActive }) =>
-                `rounded-lg px-3 py-1.5 ${isActive ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`
-              }
+            <button
+              type="button"
+              onClick={openRecognize}
+              className="rounded-lg px-3 py-1.5 text-slate-600 transition hover:bg-slate-100"
             >
               📷 识别
-            </NavLink>
+            </button>
+            {/* 待收录提示（右上角） */}
+            {pendingCount > 0 && (
+              <button
+                type="button"
+                onClick={openRecognize}
+                title="有待收录的型号，点击查看"
+                className="relative ml-1 flex items-center gap-1 rounded-full bg-red-500 px-2.5 py-1 text-xs font-semibold text-white shadow-sm transition hover:bg-red-600"
+              >
+                <span className="absolute -right-1 -top-1 flex h-2.5 w-2.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-white" />
+                </span>
+                待收录 {pendingCount}
+              </button>
+            )}
             <NavLink
               to="/compare"
               className={({ isActive }) =>
@@ -91,7 +120,6 @@ export default function App() {
           <Route path="/laptops" element={<LaptopListPage />} />
           <Route path="/laptop/:id" element={<LaptopDetailPage />} />
           <Route path="/repair" element={<RepairPage />} />
-          <Route path="/recognize" element={<RecognizePage />} />
           <Route path="*" element={<HomePage />} />
         </Routes>
       </main>

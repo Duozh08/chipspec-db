@@ -3,6 +3,7 @@ import { allChips } from '../data';
 import type { Chip } from '../data/types';
 import { allLaptops } from '../data/laptops';
 import { LAPTOP_BRAND_LABELS } from '../data/types';
+import { useRecognize } from '../context/RecognizeContext';
 
 // 热门芯片推荐（桌面 + 移动）
 const FEATURED_CHIPS = [
@@ -39,6 +40,7 @@ function ChipBadge({ chip }: { chip: Chip }) {
 }
 
 export default function HomePage() {
+  const { open: openRecognize } = useRecognize();
   // 数据统计（全部来自站内数据，真实可靠）
   const desktopCount = allChips.filter((c) => c.formFactor === 'desktop').length;
   const mobileCount = allChips.filter((c) => c.formFactor === 'mobile').length;
@@ -102,12 +104,13 @@ export default function HomePage() {
           <span className="rounded-full bg-white/15 px-3 py-1 backdrop-blur">
             🎮 {allLaptops.length} 款游戏本
           </span>
-          <Link
-            to="/recognize"
+          <button
+            type="button"
+            onClick={openRecognize}
             className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-3.5 py-1 font-medium text-white backdrop-blur transition hover:bg-white/30"
           >
             📷 截图识别型号 →
-          </Link>
+          </button>
           <span className="rounded-full bg-white/15 px-3 py-1 backdrop-blur">
             🔧 维修社区
           </span>

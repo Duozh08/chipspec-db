@@ -4,12 +4,15 @@ import { HashRouter } from 'react-router-dom';
 import './index.css';
 import App from './App';
 import { CompareProvider } from './context/CompareContext';
+import { RecognizeProvider } from './context/RecognizeContext';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <HashRouter>
       <CompareProvider>
-        <App />
+        <RecognizeProvider>
+          <App />
+        </RecognizeProvider>
       </CompareProvider>
     </HashRouter>
   </StrictMode>,
