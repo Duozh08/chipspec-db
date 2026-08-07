@@ -5,8 +5,8 @@
  * 未配置 / 调用失败时，前端自动降级为本地收录（localStorage），网站功能不受影响。
  */
 
-/** TODO: 部署 CloudBase 后填入环境 ID，例如 'chip-spec-db-xxxxxx'；留空则使用本地模式 */
-const CLOUDBASE_ENV_ID = '';
+/** CloudBase 环境 ID（tengfei-duozhu08） */
+const CLOUDBASE_ENV_ID = 'tengfei-duozhu08-d6eo3ar7df7e8cc';
 
 export const cloudbaseEnabled = CLOUDBASE_ENV_ID.length > 0;
 
