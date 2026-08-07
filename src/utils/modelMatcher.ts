@@ -77,8 +77,11 @@ export function matchLaptopsInText(text: string): MatchResult<Laptop>[] {
       // 型号特征：含数字或中文（排除 "ultra"/"radeon" 等泛词）
       if (stripped.length < 3) continue;
       if (!(/\d/.test(stripped) || /[\u4e00-\u9fff]/.test(stripped))) continue;
-      // 去掉品牌前缀后的 token 是中文名子串（如 "暗影精灵10" ⊂ "暗影精灵10omen16wf1000"）
-      if (d.includes(stripped)) {
+      // 排除纯数字 token（年份/功耗如 "2025"/"140w"，会误匹配所有同年款）
+      if (/^\d+$/.test(stripped)) continue;
+      // 双向包含：站内名包含 token（"暗影精灵10" ⊂ 站内名），
+      // 或 token 包含站内名（OCR 输出完整型号串 "rog幻16air2025" 时也能命中）
+      if (d.includes(stripped) || stripped.includes(d)) {
         results.push({ item: laptop, matchedText: tok });
         break;
       }
@@ -92,6 +95,8 @@ export interface UnknownCandidate {
   name: string;
   /** 类型猜测：chip / laptop */
   type: 'chip' | 'laptop';
+  /** 候选来源说明（如"站内仅收录 2024 款"） */
+  hint?: string;
 }
 
 /** 候选类型猜测：芯片关键词优先，其次游戏本关键词，默认游戏本 */
@@ -109,14 +114,43 @@ export function guessCandidateType(name: string): 'chip' | 'laptop' {
 export function extractUnknownCandidates(text: string, limit = 8): UnknownCandidate[] {
   const tokens = tokenize(text);
   const known = new Set<string>();
-  matchChipsInText(text).forEach((r) => known.add(r.matchedText));
-  matchLaptopsInText(text).forEach((r) => known.add(r.matchedText));
+  const chipMatches = matchChipsInText(text);
+  const laptopMatches = matchLaptopsInText(text);
+  chipMatches.forEach((r) => known.add(r.matchedText));
+  laptopMatches.forEach((r) => known.add(r.matchedText));
+
   const cands: UnknownCandidate[] = [];
+  const push = (c: UnknownCandidate) => {
+    if (!cands.some((x) => x.name === c.name)) cands.push(c);
+  };
+
+  // 1) 年份感知：文本含年份（如 2025）且站内同系列未收录该年份 → 生成「款名 + 年份」候选
+  const yearMatch = text.match(/20\d{2}/);
+  const year = yearMatch ? yearMatch[0] : '';
+  if (year && laptopMatches.length > 0) {
+    // 系列 key：displayName 归一化并去掉末尾年份（"拯救者Y7000P2025" → "拯救者y7000p"）
+    const seriesKey = (s: string) => normModel(s).replace(/20\d{2}$/, '');
+    const bySeries = new Map<string, typeof laptopMatches>();
+    for (const r of laptopMatches) {
+      const key = seriesKey(r.item.displayName);
+      if (!bySeries.has(key)) bySeries.set(key, []);
+      bySeries.get(key)!.push(r);
+    }
+    for (const [, matches] of bySeries) {
+      // 该系列已存在目标年份款 → 不提示未收录
+      if (matches.some((r) => r.item.release?.slice(0, 4) === year)) continue;
+      const first = matches[0].item;
+      const relYear = first.release?.slice(0, 4);
+      if (relYear) push({ name: `${first.displayName} ${year}`, type: 'laptop', hint: `站内已收录 ${relYear} 款，未收录 ${year} 款` });
+    }
+  }
+
+  // 2) 常规 token 候选：含数字 + 含字母或中文 + 长度 3~20（排除纯数字年份/功耗）
   for (const tok of tokens) {
     if (known.has(tok)) continue;
-    // 型号特征：含数字 + 含字母或中文（排除纯数字年份/功耗） + 长度 4~20
-    if (/\d/.test(tok) && /[a-z\u4e00-\u9fff]/.test(tok) && tok.length >= 4 && tok.length <= 20) {
-      if (!cands.some((c) => c.name === tok)) cands.push({ name: tok, type: guessCandidateType(tok) });
+    if (/^20\d{2}$/.test(tok)) continue;
+    if (/\d/.test(tok) && /[a-z\u4e00-\u9fff]/.test(tok) && tok.length >= 3 && tok.length <= 20) {
+      push({ name: tok, type: guessCandidateType(tok) });
     }
   }
   return cands.slice(0, limit);

@@ -396,7 +396,10 @@ export default function RecognizeModal({ onClose }: { onClose: () => void }) {
                           >
                             {u.type === 'chip' ? '芯片' : '游戏本'}
                           </span>
-                          <span className="truncate text-sm font-medium text-amber-900">{u.name}</span>
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-medium text-amber-900">{u.name}</div>
+                            {u.hint && <div className="truncate text-[11px] text-amber-600/80">{u.hint}</div>}
+                          </div>
                           {collectedNames[u.name] && (
                             <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
                               ✓ 已收录
