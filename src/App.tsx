@@ -99,14 +99,6 @@ export default function App() {
                 待收录 {pendingCount}
               </button>
             )}
-            <NavLink
-              to="/compare"
-              className={({ isActive }) =>
-                `rounded-lg px-3 py-1.5 ${isActive ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`
-              }
-            >
-              对比
-            </NavLink>
           </nav>
         </div>
       </header>
