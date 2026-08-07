@@ -102,6 +102,12 @@ export default function HomePage() {
           <span className="rounded-full bg-white/15 px-3 py-1 backdrop-blur">
             🎮 {allLaptops.length} 款游戏本
           </span>
+          <Link
+            to="/recognize"
+            className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-3.5 py-1 font-medium text-white backdrop-blur transition hover:bg-white/30"
+          >
+            📷 截图识别型号 →
+          </Link>
           <span className="rounded-full bg-white/15 px-3 py-1 backdrop-blur">
             🔧 维修社区
           </span>

@@ -7,6 +7,7 @@ import ComparePage from './pages/ComparePage';
 import LaptopListPage from './pages/LaptopListPage';
 import LaptopDetailPage from './pages/LaptopDetailPage';
 import RepairPage from './pages/RepairPage';
+import RecognizePage from './pages/RecognizePage';
 import CompareTray from './components/CompareTray';
 
 function ScrollToTop() {
@@ -62,6 +63,14 @@ export default function App() {
               维修
             </NavLink>
             <NavLink
+              to="/recognize"
+              className={({ isActive }) =>
+                `rounded-lg px-3 py-1.5 ${isActive ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`
+              }
+            >
+              📷 识别
+            </NavLink>
+            <NavLink
               to="/compare"
               className={({ isActive }) =>
                 `rounded-lg px-3 py-1.5 ${isActive ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`
@@ -82,6 +91,7 @@ export default function App() {
           <Route path="/laptops" element={<LaptopListPage />} />
           <Route path="/laptop/:id" element={<LaptopDetailPage />} />
           <Route path="/repair" element={<RepairPage />} />
+          <Route path="/recognize" element={<RecognizePage />} />
           <Route path="*" element={<HomePage />} />
         </Routes>
       </main>
