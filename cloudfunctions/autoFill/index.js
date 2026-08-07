@@ -15,10 +15,12 @@ const MAX_TRY = 3;
 exports.main = async (event) => {
   const app = cloud.init({ env: cloud.SYMBOL_CURRENT_ENV });
   const db = app.database();
+  const _ = db.command;
 
   const id = event.id;
   const name = String(event.name || '').trim();
   const category = event.category === 'laptop' ? 'laptop' : 'chip';
+  const brand = String(event.brand || '').trim();
   if (!id || !name) return { ok: false, error: 'id/name required' };
 
   const spec = await fillWithDeepSeek(name, category);
@@ -27,9 +29,18 @@ exports.main = async (event) => {
     return { ok: false, error: 'deepseek call failed', id };
   }
 
-  await db.collection('catalog').doc(id).update({
+  // 原 spec 字段为 null，嵌套 update 会被展开成 spec.brand 导致报错；
+  // 改用 set 全量替换文档，保留 createdAt。
+  const cur = await db.collection('catalog').doc(id).get();
+  const createdAt = cur.data[0]?.createdAt || Date.now();
+  await db.collection('catalog').doc(id).set({
+    name,
+    category,
+    brand,
     status: 'filled',
     spec,
+    note: '截图识别自动收录',
+    createdAt,
     filledAt: Date.now(),
   });
   return { ok: true, id, spec };

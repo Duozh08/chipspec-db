@@ -5,8 +5,8 @@
  * 未配置 / 调用失败时，前端自动降级为本地收录（localStorage），网站功能不受影响。
  */
 
-/** CloudBase 环境 ID（tengfei-duozhu08） */
-const CLOUDBASE_ENV_ID = 'tengfei-duozhu08-d6eo3ar7df7e8cc';
+/** CloudBase 环境 ID（duozhu08-tengfei） */
+const CLOUDBASE_ENV_ID = 'duozhu08-tengfei-d1eqlp0bae59452';
 
 export const cloudbaseEnabled = CLOUDBASE_ENV_ID.length > 0;
 

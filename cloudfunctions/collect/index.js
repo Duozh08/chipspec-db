@@ -2,7 +2,7 @@
  * CloudBase 云函数：collect
  * 接收前端"立即收录"请求 → 写入云数据库 catalog 集合 → 异步触发 autoFill 补全
  *
- * 调用：POST https://<envId>.service.tcloudbase.com/collect
+ * 调用：POST https://<domain>.app.tcloudbase.com/collect
  * body: { name: string, category: 'chip' | 'laptop', brand: string }
  */
 const cloud = require('@cloudbase/node-sdk');
@@ -12,9 +12,10 @@ exports.main = async (event) => {
   const db = app.database();
   const coll = db.collection('catalog');
 
-  const name = String(event.name || '').trim();
-  const category = event.category === 'laptop' ? 'laptop' : 'chip';
-  const brand = String(event.brand || '').trim();
+  const params = parseParams(event);
+  const name = String(params.name || '').trim();
+  const category = params.category === 'laptop' ? 'laptop' : 'chip';
+  const brand = String(params.brand || '').trim();
 
   if (!name) return { ok: false, error: 'name required' };
 
@@ -46,6 +47,20 @@ exports.main = async (event) => {
 
   return { ok: true, id: addRes.id };
 };
+
+/** 兼容 HTTP 网关（event.body 为 JSON 字符串）与内部 callFunction（参数平铺） */
+function parseParams(event) {
+  if (!event) return {};
+  if (typeof event === 'string') {
+    try { return JSON.parse(event); } catch { return {}; }
+  }
+  // HTTP 网关包装：{ body, httpMethod, headers, ... }
+  if (typeof event.body === 'string') {
+    try { return { ...JSON.parse(event.body) }; } catch { return {}; }
+  }
+  if (event.body && typeof event.body === 'object') return event.body;
+  return event;
+}
 
 function escapeReg(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

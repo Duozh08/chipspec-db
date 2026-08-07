@@ -22,3 +22,10 @@
 ## 用户偏好（本项目）
 - 中文界面；中国用户习惯
 - 实例图用 SVG 比例示意图，不用真实照片（版权规避）
+
+## CloudBase 后端（2026-08-07 上线）
+- 环境：`duozhu08-tengfei-d1eqlp0bae59452`（个人版 ap-shanghai，到期 2026-09-07 需续费）；前端 apiClient.ts 的 `CLOUDBASE_ENV_ID` 指向它
+- 三个 Event 云函数：collect（写库+触发）、autoFill（DeepSeek 补全，环境变量 DEEPSEEK_API_KEY）、list（查询）；经 HTTP 网关路由 /collect、/list 暴露，匿名已放开；域名 `https://duozhu08-tengfei-d1eqlp0bae59452.service.tcloudbase.com/{collect|list}`
+- catalog 集合权限 ADMINONLY（仅云函数读写）；云端函数代码=cloudfunctions/ 目录，改后需重新部署（updateFunctionCode）
+- **必坑**：① HTTP 网关调 Event 函数参数在 event.body（JSON 串），需 parseParams 兼容；② spec 字段为 null 时 update 嵌套对象报错，必须 doc.set 全量替换；③ MCP 建函数勿用 type=HTTP（要求 scf_bootstrap），用 Event+网关路由
+- 部署可用 WorkBuddy CloudBase 连接器（MCP mcp__cloudbase__*）直接操作，无需控制台
