@@ -15,6 +15,10 @@ export interface PendingItem {
   /** 用户补充说明 */
   note: string;
   createdAt: string;
+  /** 补全状态：pending=补全中 / filled=已补全（后端已返回结构化规格） */
+  status?: 'pending' | 'filled';
+  /** 后端补全完成时间戳（ISO） */
+  filledAt?: string;
 }
 
 export function loadPendingItems(): PendingItem[] {
@@ -38,6 +42,24 @@ function save(items: PendingItem[]) {
   }
 }
 
+/** 按名称（忽略大小写）更新补全状态，返回是否命中 */
+export function markPendingFilled(name: string, filledAt?: number): boolean {
+  const items = loadPendingItems();
+  let hit = false;
+  const next = items.map((i) => {
+    if (i.name.toLowerCase() === name.toLowerCase() && i.status !== 'filled') {
+      hit = true;
+      return { ...i, status: 'filled' as const, filledAt: filledAt ? new Date(filledAt).toISOString() : new Date().toISOString() };
+    }
+    return i;
+  });
+  if (hit) {
+    save(next);
+    notifyPendingChanged();
+  }
+  return hit;
+}
+
 /** 通知各组件待收录清单已变化（同页自定义事件 + 跨页 storage 事件） */
 export function notifyPendingChanged() {
   try {
@@ -48,7 +70,12 @@ export function notifyPendingChanged() {
 }
 
 export function addPendingItem(item: Omit<PendingItem, 'id' | 'createdAt'>): PendingItem {
-  const full: PendingItem = { ...item, id: `pend-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, createdAt: new Date().toISOString() };
+  const full: PendingItem = {
+    ...item,
+    status: 'pending',
+    id: `pend-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    createdAt: new Date().toISOString(),
+  };
   const items = loadPendingItems();
   // 名称去重（忽略大小写）
   if (!items.some((i) => i.name.toLowerCase() === full.name.toLowerCase())) {

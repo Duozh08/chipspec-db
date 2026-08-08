@@ -10,6 +10,7 @@ import RepairPage from './pages/RepairPage';
 import CompareTray from './components/CompareTray';
 import { useRecognize } from './context/RecognizeContext';
 import { loadPendingItems } from './utils/pendingStore';
+import { useCollectSync } from './hooks/useCollectSync';
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -22,10 +23,14 @@ function ScrollToTop() {
 export default function App() {
   const { open: openRecognize } = useRecognize();
   const [pendingCount, setPendingCount] = useState(loadPendingItems().length);
+  const [filledCount, setFilledCount] = useState(0);
+  // 轮询后端补全状态（已补全的从"待收录"中移出，展示为绿色已补全）
+  const sync = useCollectSync(5000);
 
   // 待收录清单变化时更新右上角徽标
   useEffect(() => {
     const update = () => setPendingCount(loadPendingItems().length);
+    update();
     window.addEventListener('chipspec-pending-updated', update);
     window.addEventListener('storage', update);
     return () => {
@@ -33,6 +38,15 @@ export default function App() {
       window.removeEventListener('storage', update);
     };
   }, []);
+
+  // 轮询返回后：统计已补全数量，并让待收录数量实时反映
+  useEffect(() => {
+    if (sync.syncedAt === null) return;
+    const items = loadPendingItems();
+    const filled = items.filter((p) => p.status === 'filled').length;
+    setFilledCount(filled);
+    setPendingCount(items.length - filled);
+  }, [sync.syncedAt, sync.filledCount]);
 
   return (
     <div className="min-h-screen">
@@ -84,6 +98,17 @@ export default function App() {
             >
               识别
             </button>
+            {/* 已补全提示（右上角，绿色） */}
+            {filledCount > 0 && (
+              <button
+                type="button"
+                onClick={openRecognize}
+                title="已补全的收录条目，点击查看"
+                className="ml-1 flex items-center gap-1 rounded-full bg-emerald-500 px-2.5 py-1 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-600"
+              >
+                ✓ 已补全 {filledCount}
+              </button>
+            )}
             {/* 待收录提示（右上角） */}
             {pendingCount > 0 && (
               <button

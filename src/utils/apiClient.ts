@@ -30,3 +30,20 @@ function call(name: string, data: Record<string, unknown>) {
 export function apiCollect(name: string, category: 'chip' | 'laptop', brand: string) {
   return call('collect', { name, category, brand });
 }
+
+/** 查询后端收录/补全结果（供前端轮询显示已补全状态） */
+export interface CatalogRecord {
+  _id: string;
+  name: string;
+  category: 'chip' | 'laptop';
+  brand: string;
+  status: 'pending' | 'filled';
+  spec: Record<string, unknown> | null;
+  createdAt: number;
+  filledAt?: number;
+}
+
+export async function apiList(status?: 'pending' | 'filled', limit = 100): Promise<CatalogRecord[]> {
+  const json = await call('list', { status, limit });
+  return Array.isArray(json.items) ? (json.items as CatalogRecord[]) : [];
+}

@@ -105,6 +105,21 @@ export function updateLocalCatalogStatus(id: string, status: 'pending' | 'filled
   save(loadLocalCatalog().map((i) => (i.id === id ? { ...i, status } : i)));
 }
 
+/** 按名称（忽略大小写）更新补全状态，返回是否命中 */
+export function saveLocalCatalogStatusByName(name: string, status: 'pending' | 'filled'): boolean {
+  const items = loadLocalCatalog();
+  let hit = false;
+  const next = items.map((i) => {
+    if (i.name.toLowerCase() === name.toLowerCase() && i.status !== status) {
+      hit = true;
+      return { ...i, status };
+    }
+    return i;
+  });
+  if (hit) save(next);
+  return hit;
+}
+
 /** 导出本地收录（与待补全清单合并供 AI 管道使用） */
 export function localCatalogToRequests(): { name: string; category: 'chip' | 'laptop'; brand: string; note: string }[] {
   return loadLocalCatalog().map((i) => ({

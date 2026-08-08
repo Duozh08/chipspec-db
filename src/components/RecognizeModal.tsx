@@ -7,6 +7,7 @@ import { addLocalCatalogItem } from '../utils/localCatalog';
 import { apiCollect } from '../utils/apiClient';
 import { matchChipsInText, matchLaptopsInText, extractUnknownCandidates } from '../utils/modelMatcher';
 import type { UnknownCandidate } from '../utils/modelMatcher';
+import { useCollectSync } from '../hooks/useCollectSync';
 
 export default function RecognizeModal({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
@@ -28,6 +29,16 @@ export default function RecognizeModal({ onClose }: { onClose: () => void }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pasteRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
+
+  // 轮询后端补全状态：发现已补全 → 刷新本地清单（显示 ✓ 已补全）
+  const sync = useCollectSync(5000);
+  useEffect(() => {
+    setPendingItems(loadPendingItems());
+    if (sync.changed) {
+      setSavedMsg('检测到新的补全结果，已更新状态');
+      setTimeout(() => setSavedMsg(''), 5000);
+    }
+  }, [sync.changed]);
 
   const runMatch = useCallback((value: string) => {
     const chips = matchChipsInText(value).map((r) => ({
@@ -435,7 +446,10 @@ export default function RecognizeModal({ onClose }: { onClose: () => void }) {
           {pendingItems.length > 0 ? (
             <div className="mb-2">
               <div className="mb-1.5 flex items-center justify-between">
-                <span className="text-xs font-semibold text-slate-600">📌 已收录清单（本机 {pendingItems.length} 条，AI 自动补全中）</span>
+                <span className="text-xs font-semibold text-slate-600">
+                  📌 已收录清单（{pendingItems.length} 条
+                  {pendingItems.some((p) => p.status === 'filled') ? ` · ${pendingItems.filter((p) => p.status === 'filled').length} 条已补全` : ''}）
+                </span>
                 <button
                   type="button"
                   onClick={exportPendingItems}
@@ -447,8 +461,30 @@ export default function RecognizeModal({ onClose }: { onClose: () => void }) {
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {pendingItems.map((p) => (
-                  <span key={p.id} className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-600">
+                  <span
+                    key={p.id}
+                    className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] ${
+                      p.status === 'filled'
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                        : 'border-slate-200 bg-white text-slate-600'
+                    }`}
+                    title={
+                      p.status === 'filled'
+                        ? `已补全 ${p.filledAt ? new Date(p.filledAt).toLocaleString('zh-CN') : ''}`
+                        : 'AI 自动补全中'
+                    }
+                  >
+                    {p.status === 'filled' ? (
+                      <span className="text-emerald-600">✓</span>
+                    ) : (
+                      <svg viewBox="0 0 24 24" className="h-3 w-3 animate-spin text-blue-500" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                        <path d="M12 3a9 9 0 1 0 9 9" />
+                      </svg>
+                    )}
                     {p.name}
+                    <span className={p.status === 'filled' ? 'text-emerald-500' : 'text-slate-300'}>
+                      {p.status === 'filled' ? '已补全' : '补全中'}
+                    </span>
                     <button
                       onClick={() => {
                         removePendingItem(p.id);
