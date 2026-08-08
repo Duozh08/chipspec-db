@@ -5,29 +5,35 @@
  * 且本地 tessdata 之前只部署了非 LSTM core 变体，而 oem=1(LSTM_ONLY) 实际请求
  * tesseract-core-*-lstm.wasm.js → 本地 404 → 全部走 CDN，多设备首次加载必卡。
  *
- * 现状（多设备友好）：
+ * 现状（多设备友好 + 国内网络快）：
  * 1. tessdata 全变体本地化：simd / relaxedsimd / 普通 × LSTM，全设备本地直载，不依赖 CDN；
  * 2. 语言包用 LSTM best_int 模型（1.7+3.0MB），替代完整版（20+11MB），首次加载 40MB → ~11MB；
  * 3. worker 全局复用 + 弹窗预热：核心/语言包只下载一次，之后识别秒级响应；
  * 4. 识别前图片缩放（≤2400px）：移动端省内存、加快识别；
  * 5. 引擎级错误（加载/网络）自动重建，识别级错误不影响复用。
+ *
+ * 2026-08-08 修复"换包后无法识别"：
+ *   - 根因：GitHub Pages 静态托管在用户网络下仅 ~22KB/s，11MB tessdata 需下 8 分钟，
+ *     用户等不到完成 → 表现为"无法识别"。jsdelivr 在用户网络下也不通。
+ *   - 方案：tessdata 主源切到 CloudBase 静态托管（腾讯云国内 CDN，实测 ~7.5MB/s），
+ *     GitHub Pages 同域副本做兜底。缓存命名空间升到 v4，避开旧坏缓存。
  */
 
 export interface OcrEngineHandle {
   /** tesseract.js worker（可多次 recognize，勿 terminate） */
   worker: unknown;
-  source: 'local' | 'cdn';
+  source: 'cloudbase' | 'github';
 }
 
 /** 引擎状态回调（首次加载时触发，供 UI 显示进度） */
 export type EngineStatusFn = (status: string, progress?: number, phase?: string) => void;
 
-const TESS_BASE = `${import.meta.env.BASE_URL}tessdata/`;
-const CDN_WORKER = 'https://cdn.jsdelivr.net/npm/tesseract.js@v7.0.0/dist/worker.min.js';
-const CDN_CORE = 'https://cdn.jsdelivr.net/npm/tesseract.js-core@v7.0.0';
-const CDN_LANG = 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/';
-/** 缓存命名空间：v3 = LSTM best_int 语言包（隔离旧版完整语言包缓存） */
-const CACHE_NS = 'tess-fast-v3';
+/** CloudBase 静态托管（腾讯云国内 CDN，快）：主源 */
+const CLOUDBASE_TESS = 'https://duozhu08-tengfei-d1eqlp0bae59452-1452185409.tcloudbaseapp.com/tessdata/';
+/** GitHub Pages 同域副本（慢但可达）：兜底 */
+const GH_TESS = `${import.meta.env.BASE_URL}tessdata/`;
+/** 缓存命名空间：v4 = best_int 语言包 + CloudBase 主源（隔离旧版本可能损坏的缓存） */
+const CACHE_NS = 'tess-fast-v4';
 /** 识别前图片最长边（px）上限：超出则缩放，移动端省内存/加快识别 */
 const MAX_IMAGE_DIM = 2400;
 
@@ -47,13 +53,14 @@ function emit(status: string, progress?: number, phase?: string) {
   }
 }
 
-/** 创建 worker（source 决定本地/CDN；oem=1 为 LSTM_ONLY，加载 -lstm core 变体） */
-async function buildWorker(useCdn: boolean): Promise<OcrEngineHandle> {
+/** 创建 worker（source 决定 tessdata 源；oem=1 为 LSTM_ONLY，加载 -lstm core 变体） */
+async function buildWorker(source: 'cloudbase' | 'github'): Promise<OcrEngineHandle> {
   const Tesseract = (await import('tesseract.js')).default;
+  const tessBase = source === 'cloudbase' ? CLOUDBASE_TESS : GH_TESS;
   const worker = await Tesseract.createWorker(['chi_sim', 'eng'], 1, {
-    workerPath: useCdn ? CDN_WORKER : `${TESS_BASE}worker.min.js`,
-    corePath: useCdn ? CDN_CORE : TESS_BASE,
-    langPath: useCdn ? CDN_LANG : TESS_BASE,
+    workerPath: `${tessBase}worker.min.js`,
+    corePath: tessBase,
+    langPath: tessBase,
     cachePath: CACHE_NS,
     logger: (m: { status: string; progress: number }) => {
       if (m.status === 'loading tesseract core') {
@@ -65,7 +72,7 @@ async function buildWorker(useCdn: boolean): Promise<OcrEngineHandle> {
       }
     },
   });
-  return { worker, source: useCdn ? 'cdn' : 'local' };
+  return { worker, source };
 }
 
 /**
@@ -101,23 +108,24 @@ export async function prepareImage(file: File, maxDim = MAX_IMAGE_DIM): Promise<
   }
 }
 
-/** 获取引擎（单例）：本地优先，失败自动降级 CDN；已创建则直接返回 */
+/** 获取引擎（单例）：CloudBase（快）优先，失败降级 GitHub Pages；已创建则直接返回 */
 export function ensureEngine(): Promise<OcrEngineHandle> {
   if (enginePromise) return enginePromise;
   enginePromise = (async () => {
-    try {
-      return await buildWorker(false);
-    } catch (localErr) {
-      console.warn('[ocrEngine] 本地引擎加载失败，切换 CDN 重试', localErr);
-      emit('本地引擎加载失败/超时，正在切换 CDN…', undefined, 'loading');
+    const sources: ('cloudbase' | 'github')[] = ['cloudbase', 'github'];
+    let lastErr: unknown = null;
+    for (const src of sources) {
       try {
-        return await buildWorker(true);
-      } catch (cdnErr) {
-        // 全部失败：允许下次重试
-        enginePromise = null;
-        throw cdnErr;
+        return await buildWorker(src);
+      } catch (err) {
+        lastErr = err;
+        console.warn(`[ocrEngine] ${src} 源引擎加载失败，切换下一源`, err);
+        emit(`引擎加载失败，正在切换备用源…`, undefined, 'loading');
       }
     }
+    // 全部失败：允许下次重试
+    enginePromise = null;
+    throw lastErr;
   })();
   return enginePromise;
 }
