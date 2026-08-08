@@ -9,6 +9,7 @@ import NewCatalogSection from '../components/NewCatalogSection';
 import { sortByYearThenFavorites, isFavorited } from '../hooks/useFavorites';
 import { useLocalCatalogItems } from '../hooks/useLocalCatalogItems';
 import { localItemToLaptop, isLocalId } from '../utils/localCatalog';
+import { laptopSearchKeywords } from '../utils/modelMatcher';
 
 const BRAND_OPTIONS: { value: LaptopBrand | ''; label: string }[] = [
   { value: '', label: '全部品牌' },
@@ -96,8 +97,10 @@ export default function LaptopListPage() {
         if (y !== urlYear) return false;
       }
       if (q) {
-        const haystack = `${l.brand} ${l.displayName} ${l.series} ${l.model} ${l.cpuOptions.join(' ')} ${l.gpuOptions.join(' ')}`.toLowerCase();
-        if (!haystack.includes(q)) return false;
+        // 基础字段 + 年份化别名（"y9000p2022" → 拯救者Y9000P 2022款）
+        const base = `${l.brand} ${l.displayName} ${l.series} ${l.model} ${l.cpuOptions.join(' ')} ${l.gpuOptions.join(' ')}`.toLowerCase();
+        const aliases = laptopSearchKeywords(l).join(' ');
+        if (!base.includes(q) && !aliases.includes(q)) return false;
       }
       return true;
     });

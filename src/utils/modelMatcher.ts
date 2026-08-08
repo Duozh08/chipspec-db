@@ -1,6 +1,7 @@
 /** 型号匹配工具：从识别文本中匹配芯片库 / 游戏本库中的型号 */
 import { allChips } from '../data';
 import { allLaptops } from '../data/laptops';
+import { LAPTOP_BRAND_LABELS } from '../data/types';
 import type { Chip } from '../data/types';
 import type { Laptop } from '../data/types';
 
@@ -156,6 +157,34 @@ function extractModelCore(stripped: string): string {
   return m2 && /\d/.test(m2[1]) ? m2[1] : '';
 }
 
+/**
+ * 为笔记本生成"可搜索别名"（归一化小写、无空格）：
+ * 覆盖「型号+年份」连写（y9000p2022 → 拯救者Y9000P 2022款）、
+ * 去中文品牌前缀（y9000p）、英文系列名（legiony9000p）、
+ * id 尾段（y9000p16iah7）等非标准写法。
+ * 年份只挂在对应 release 年的机型上，避免 y9000p2022 误中其他年份款。
+ * 识别匹配（matchLaptopsInText）与列表搜索（LaptopListPage）共用。 */
+export function laptopSearchKeywords(l: Laptop): string[] {
+  const year = l.release?.slice(0, 4) ?? '';
+  const norm = normModel(l.displayName);
+  const kw = new Set<string>([norm, l.model.toLowerCase(), l.series.toLowerCase(), normModel(l.id)]);
+  // displayName 去掉中文品牌前缀："拯救者y9000p" → "y9000p"
+  const bare = BRANDS_CN.reduce((s, b) => s.replace(b, ''), norm);
+  if (bare && bare !== norm) {
+    kw.add(bare);
+    kw.add(`${bare}${l.model.toLowerCase()}`);
+    if (year) kw.add(`${bare}${year}`);
+  }
+  if (year) {
+    kw.add(`${norm}${year}`);
+    kw.add(`${l.brand}${norm}${year}`);
+    const brandLabel = normModel(LAPTOP_BRAND_LABELS[l.brand] ?? l.brand);
+    if (brandLabel && brandLabel !== l.brand) kw.add(`${brandLabel}${norm}${year}`);
+    kw.add(`${l.series.toLowerCase()}${bare || norm}${year}`);
+  }
+  return Array.from(kw).filter((k) => k.length >= 2);
+}
+
 export function matchLaptopsInText(text: string, extraLaptops: Laptop[] = []): MatchResult<Laptop>[] {
   const tokens = tokenize(text).map((t) => ({ tok: t, stripped: stripBrands(t) }));
   // 合并 token（"天选"+"6"）也参与匹配，解决 OCR 中文数字带空格问题
@@ -191,6 +220,16 @@ export function matchLaptopsInText(text: string, extraLaptops: Laptop[] = []): M
       // 用近似子序列覆盖 OCR 字符级切分导致 "天6" 对应 "天选6" 的场景。
       const core = extractModelCore(stripped);
       if (core && core.length >= 2 && core !== stripped && isApproxSubsequence(core, d)) {
+        results.push({ item: laptop, matchedText: tok });
+        matchedIds.add(laptop.id);
+        pushed = true;
+        break;
+      }
+      // 别名兜底：「型号+年份」连写 / 英文系列名 / id 尾段等非标准写法
+      // （"y9000p2022" → 拯救者Y9000P 2022款；"legiony9000p" → Legion 系列）。
+      // 年份化别名只在对应 release 年的机型上生成，天然规避跨年份误匹配。
+      const hitKw = laptopSearchKeywords(laptop).find((k) => stripped.includes(k) || k.includes(stripped));
+      if (hitKw) {
         results.push({ item: laptop, matchedText: tok });
         matchedIds.add(laptop.id);
         pushed = true;
