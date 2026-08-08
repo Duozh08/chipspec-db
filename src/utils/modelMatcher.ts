@@ -214,8 +214,28 @@ export interface UnknownCandidate {
   name: string;
   /** 类型猜测：chip / laptop */
   type: 'chip' | 'laptop';
-  /** 候选来源说明（如"站内仅收录 2024 款"） */
+  /** 候选来源说明（如"站内仅收录 2024 款"、"硬件参数缺失"） */
   hint?: string;
+}
+
+/** 检查游戏本硬件参数充实度，返回缺失提示（null = 参数充足）。
+ *  收录逻辑据此判断：型号即使匹配到站内，若处理器/显卡等硬件参数缺失，也应触发补全。 */
+export function laptopHardwareHint(l: Laptop): string | null {
+  const missing: string[] = [];
+  if (l.cpuOptions.length === 0) missing.push('处理器方案');
+  if (l.gpuOptions.length === 0) missing.push('显卡方案');
+  if (!l.ram) missing.push('内存');
+  if (!l.storage) missing.push('硬盘');
+  return missing.length === 0 ? null : `硬件参数缺失：${missing.join('、')}`;
+}
+
+/** 检查芯片硬件参数充实度，返回缺失提示（null = 参数充足） */
+export function chipHardwareHint(c: Chip): string | null {
+  const missing: string[] = [];
+  if (c.tdp == null) missing.push('TDP 功耗');
+  if (c.dies.length === 0) missing.push('Die 数据');
+  if (!c.process) missing.push('制程');
+  return missing.length === 0 ? null : `硬件参数缺失：${missing.join('、')}`;
 }
 
 /** 候选类型猜测：芯片关键词优先，其次游戏本关键词，默认游戏本 */
@@ -284,6 +304,27 @@ export function extractUnknownCandidates(text: string, limit = 8): UnknownCandid
       if (isKnownVariant(name)) continue;
       push({ name, type: guessCandidateType(name) });
     }
+  }
+
+  // 3) 已匹配但硬件参数不足的站内条目 → 补全候选：
+  //    收录时不止看型号是否缺失，型号存在但缺少处理器/显卡等硬件参数同样触发收录补全
+  //    （覆盖 AI 收录的空壳条目、以及详情页补录的残缺数据）
+  const seenCand = new Set(cands.map((c) => c.name));
+  for (const r of laptopMatches) {
+    const hint = laptopHardwareHint(r.item);
+    if (!hint) continue;
+    const name = r.item.displayName;
+    if (seenCand.has(name)) continue;
+    seenCand.add(name);
+    push({ name, type: 'laptop', hint });
+  }
+  for (const r of chipMatches) {
+    const hint = chipHardwareHint(r.item);
+    if (!hint) continue;
+    const name = r.item.model;
+    if (seenCand.has(name)) continue;
+    seenCand.add(name);
+    push({ name, type: 'chip', hint });
   }
   return cands.slice(0, limit);
 }

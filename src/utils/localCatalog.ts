@@ -25,6 +25,8 @@ export interface LocalCatalogItem {
   desc: string;
   /** 补全状态：pending=AI 补全中 / filled=已补全 */
   status: 'pending' | 'filled';
+  /** 后端 AI 补全的完整规格（CloudBase catalog.spec），未补全为 undefined */
+  spec?: Record<string, unknown>;
   createdAt: string;
 }
 
@@ -126,6 +128,22 @@ export function saveLocalCatalogStatusByName(name: string, status: 'pending' | '
   return hit;
 }
 
+/** 按名称保存后端 AI 补全的完整规格（spec）并标记已补全，返回是否命中。
+ *  这样本地收录的条目就能显示后端补全的处理器/显卡等硬件参数。 */
+export function saveLocalCatalogFilled(name: string, spec: Record<string, unknown> | null, filledAt?: number): boolean {
+  const items = loadLocalCatalog();
+  let hit = false;
+  const next = items.map((i) => {
+    if (i.name.toLowerCase() === name.toLowerCase()) {
+      hit = true;
+      return { ...i, status: 'filled' as const, spec: spec ?? i.spec, filledAt };
+    }
+    return i;
+  });
+  if (hit) save(next);
+  return hit;
+}
+
 /** 导出本地收录（与待补全清单合并供 AI 管道使用） */
 export function localCatalogToRequests(): { name: string; category: 'chip' | 'laptop'; brand: string; note: string }[] {
   return loadLocalCatalog().map((i) => ({
@@ -168,48 +186,74 @@ function toLaptopBrand(item: LocalCatalogItem): LaptopBrand {
   return 'lenovo';
 }
 
-/** 本地收录条目 → 芯片视图对象 */
+/** 本地收录条目 → 芯片视图对象（优先使用后端 AI 补全的 spec，缺失字段置空） */
 export function localItemToChip(item: LocalCatalogItem): Chip {
-  const brand = item.brand === 'intel' || item.brand === 'amd' || item.brand === 'nvidia'
-    ? (item.brand as Brand)
-    : guessChipBrand(item.name);
+  const s = (item.spec ?? {}) as Record<string, unknown>;
+  const brand: Brand =
+    s.brand === 'intel' || s.brand === 'amd' || s.brand === 'nvidia'
+      ? (s.brand as Brand)
+      : item.brand === 'intel' || item.brand === 'amd' || item.brand === 'nvidia'
+        ? (item.brand as Brand)
+        : guessChipBrand(item.name);
+  const category: 'cpu' | 'gpu' =
+    s.category === 'gpu' || s.category === 'cpu'
+      ? (s.category as 'cpu' | 'gpu')
+      : guessChipCategory(item.name);
+  const formFactor: 'desktop' | 'mobile' = s.formFactor === 'desktop' ? 'desktop' : 'mobile';
+  const release = typeof s.release === 'string' && s.release ? s.release : item.createdAt.slice(0, 10);
+  const pkg = (typeof s.package === 'object' && s.package !== null ? s.package : {}) as Record<string, unknown>;
   return {
     id: item.id,
     brand,
-    category: guessChipCategory(item.name),
-    formFactor: 'mobile',
-    model: item.name,
-    codename: 'AI 自动收录',
-    generation: '',
-    process: '',
-    release: item.createdAt.slice(0, 10),
-    package: { type: '', style: 'bga', lengthMm: null, widthMm: null },
-    dies: [],
-    transistorsMillions: null,
-    notes: item.desc ? `AI 自动收录（${item.status === 'filled' ? '已补全' : 'AI 补全中'}）· ${item.desc}` : `AI 自动收录（${item.status === 'filled' ? '已补全' : 'AI 补全中'}）`,
-    tdp: null,
-    loadTempRange: null,
-    dataQuality: 'estimated',
-    sources: [],
+    category,
+    formFactor,
+    model: typeof s.model === 'string' && s.model ? s.model : item.name,
+    codename: typeof s.codename === 'string' && s.codename ? s.codename : 'AI 自动收录',
+    generation: typeof s.generation === 'string' ? s.generation : '',
+    process: typeof s.process === 'string' ? s.process : '',
+    release,
+    package: {
+      type: typeof pkg.type === 'string' ? (pkg.type as string) : '',
+      style: pkg.style === 'lga' ? 'lga' : 'bga',
+      lengthMm: null,
+      widthMm: null,
+    },
+    dies: Array.isArray(s.dies) ? (s.dies as Chip['dies']) : [],
+    transistorsMillions: typeof s.transistorsMillions === 'number' ? s.transistorsMillions : null,
+    notes: item.desc
+      ? `AI 自动收录（${item.status === 'filled' ? '已补全' : 'AI 补全中'}）· ${item.desc}`
+      : `AI 自动收录（${item.status === 'filled' ? '已补全' : 'AI 补全中'}）`,
+    tdp: typeof s.tdp === 'number' ? s.tdp : null,
+    loadTempRange: typeof s.loadTempRange === 'string' ? s.loadTempRange : null,
+    dataQuality: s.dataQuality === 'official' ? 'official' : 'estimated',
+    sources: Array.isArray(s.sources) ? (s.sources as Chip['sources']) : [],
   };
 }
 
-/** 本地收录条目 → 游戏本视图对象 */
+/** 本地收录条目 → 游戏本视图对象（优先使用后端 AI 补全的 spec，缺失字段置空） */
 export function localItemToLaptop(item: LocalCatalogItem): Laptop {
+  const s = (item.spec ?? {}) as Record<string, unknown>;
+  const cpuArr = Array.isArray(s.cpuOptions) ? s.cpuOptions.filter((x): x is string => typeof x === 'string') : [];
+  const gpuArr = Array.isArray(s.gpuOptions) ? s.gpuOptions.filter((x): x is string => typeof x === 'string') : [];
+  const release = typeof s.release === 'string' && s.release ? s.release : item.createdAt.slice(0, 10);
+  const brand: LaptopBrand =
+    typeof s.brand === 'string' && LAPTOP_BRAND_KEYS.includes(s.brand as LaptopBrand)
+      ? (s.brand as LaptopBrand)
+      : toLaptopBrand(item);
   return {
     id: item.id,
-    brand: toLaptopBrand(item),
-    series: '',
-    displayName: item.name,
-    model: item.name,
-    release: item.createdAt.slice(0, 10),
-    cpuOptions: [],
-    gpuOptions: [],
-    ram: '',
-    storage: '',
-    display: '',
-    weightKg: null,
-    sources: [],
+    brand,
+    series: typeof s.series === 'string' ? s.series : '',
+    displayName: typeof s.displayName === 'string' && s.displayName ? s.displayName : item.name,
+    model: typeof s.model === 'string' && s.model ? s.model : item.name,
+    release,
+    cpuOptions: cpuArr,
+    gpuOptions: gpuArr,
+    ram: typeof s.ram === 'string' ? s.ram : '',
+    storage: typeof s.storage === 'string' ? s.storage : '',
+    display: typeof s.display === 'string' ? s.display : '',
+    weightKg: typeof s.weightKg === 'number' ? s.weightKg : null,
+    sources: Array.isArray(s.sources) ? (s.sources as Laptop['sources']) : [],
   };
 }
 

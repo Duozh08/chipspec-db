@@ -1,12 +1,13 @@
 /**
  * 收录补全状态轮询：定期调用后端 list 接口，把已补全（filled）的条目
  * 同步到本地待收录清单（pendingStore）与本地收录库（localCatalog），
- * 前端 UI 据此显示「已补全 ✓」标识。
+ * 前端 UI 据此显示「已补全 ✓」标识，并把后端 AI 补全的完整规格（spec）
+ * 写回本地条目，使收录的型号能展示处理器/显卡等硬件参数。
  */
 import { useEffect, useRef, useState } from 'react';
 import { apiList, cloudbaseEnabled } from '../utils/apiClient';
 import { markPendingFilled } from '../utils/pendingStore';
-import { saveLocalCatalogStatusByName } from '../utils/localCatalog';
+import { saveLocalCatalogFilled } from '../utils/localCatalog';
 
 export interface SyncState {
   /** 后端返回的已补全条目数 */
@@ -33,7 +34,8 @@ export function useCollectSync(intervalMs = 5000) {
         let changed = false;
         for (const it of items) {
           const hitPending = markPendingFilled(it.name, it.filledAt);
-          const hitLocal = saveLocalCatalogStatusByName(it.name, 'filled');
+          // 同时把后端补全的 spec 写回本地条目（含处理器/显卡等硬件参数）
+          const hitLocal = saveLocalCatalogFilled(it.name, it.spec, it.filledAt);
           if (hitPending || hitLocal) changed = true;
         }
         setState((prev) => ({

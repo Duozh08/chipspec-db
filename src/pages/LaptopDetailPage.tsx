@@ -92,33 +92,29 @@ function wrapCanvasLines(ctx: CanvasRenderingContext2D, text: string, maxWidth: 
 }
 
 /** 用 Canvas 绘制"基本规格"表格并返回 canvas（2x 高清输出）。
- *  宽度自适应：以内容最长一行的渲染宽度确定边界，左右边距对称（padX 相同）。 */
+ *  宽度自适应：以内容最长一行的渲染宽度确定边界（不折叠该行内容），左右边距对称。 */
 function drawSpecsCanvas(specs: [string, string, string?][]): HTMLCanvasElement {
   const padX = 16; // 左右边距（对称，用户要求两边边距相同）
   const gap = 16; // label 与 value 间距
   const labelExtra = 12; // label 列宽额外余量
-  const MAX_VALUE_W = 520; // value 单行最大宽度（超出则换行，避免图片过宽）
   const headerH = 42;
   const lineH = 22;
   const rowPad = 20; // 单行时上下各 10px
   const FONT = '"PingFang SC", "Microsoft YaHei", system-ui, sans-serif';
 
-  // 预测量：label 列宽 = 最宽 label + 余量；value 列宽 = 最宽 value 单行宽度（上限 MAX_VALUE_W）
+  // 预测量：label 列宽 = 最宽 label + 余量；value 列宽 = 最宽 value 单行宽度（不折叠，以最长一行为准）
   const probe = document.createElement('canvas').getContext('2d')!;
   probe.font = `14px ${FONT}`;
   const labelWs = specs.map(([label]) => probe.measureText(label).width);
   const labelW = Math.max(...labelWs) + labelExtra;
   const valueRawWs = specs.map(([, value]) => probe.measureText(value).width);
-  const valueW = Math.min(Math.max(...valueRawWs), MAX_VALUE_W);
+  const valueW = Math.max(...valueRawWs);
   const contentW = labelW + gap + valueW;
   // 总宽 = 内容宽 + 左右对称边距；标题「基本规格」不窄于内容时以标题为准
   const W = Math.max(padX * 2 + contentW, probe.measureText('基本规格').width + padX * 2);
 
-  // 每行高度（value 按 valueW 换行）
-  const rowHeights: number[] = specs.map(([, value]) => {
-    const lines = wrapCanvasLines(probe, value, valueW);
-    return lines.length * lineH + rowPad;
-  });
+  // 每行高度（value 不折叠，单行）
+  const rowHeights: number[] = specs.map(() => lineH + rowPad);
   const totalH = headerH + rowHeights.reduce((a, b) => a + b, 0);
 
   // 2x 高清
@@ -594,6 +590,17 @@ export default function LaptopDetailPage() {
               ))}
             </dl>
           </div>
+
+          {/* 硬件参数缺失提示（AI 收录空壳条目 / 补全失败时） */}
+          {allCpuOptions.length === 0 && allGpuOptions.length === 0 && (
+            <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+              <span className="shrink-0 text-sm">⚠️</span>
+              <span>
+                该型号为 AI 自动收录，处理器 / 显卡硬件参数暂缺，AI 补全后会在此自动显示；
+                也可点击下方「补充缺失的处理器 / 显卡方案」手动提交。
+              </span>
+            </div>
+          )}
 
           {/* 处理器方案 */}
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
