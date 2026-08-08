@@ -52,7 +52,9 @@ function tokenize(text: string): string[] {
 }
 
 /** 相邻 token 合并候选：中文/字母段 + 数字段（"天选"+"6"→"天选6"、"rtx"+"5060"→"rtx5060"）
- * 或 数字段 + 字母段（"5060"+"laptop"→"5060laptop"）。要求合并结果含中文，避免英文噪音。 */
+ * 或 数字段 + 字母段（"5060"+"laptop"→"5060laptop"、"幻16"+"Air"→"幻16Air"）。
+ * 或 3 位数字 + 纯字母（"911"+"Zero"→"911zero"，雷神 911 系列型号）。
+ * 要求合并结果含中文（避免英文噪音），或符合 "911zero" 型（数字开头的英文型号）。 */
 function mergedTokens(tokens: string[]): string[] {
   const out: string[] = [];
   for (let i = 0; i < tokens.length - 1; i++) {
@@ -61,8 +63,9 @@ function mergedTokens(tokens: string[]): string[] {
     const comb = a + b;
     const goodPair =
       (/[\u4e00-\u9fff a-z]$/.test(a) && /^\d/.test(b)) || // 天选+6 / rtx+5060
-      (/\d$/.test(a) && /^[a-z\u4e00-\u9fff]/.test(b)); // 5060+laptop / 幻16+Air
-    if (goodPair && /[\u4e00-\u9fff]/.test(comb)) out.push(comb);
+      (/\d$/.test(a) && /^[a-z\u4e00-\u9fff]/.test(b)) || // 5060+laptop / 幻16+Air
+      (/^\d{3}$/.test(a) && /^[a-z]+$/.test(b)); // 911+Zero
+    if (goodPair && (/[\u4e00-\u9fff]/.test(comb) || /^\d{3}[a-z]+$/.test(comb))) out.push(comb);
   }
   return out;
 }
@@ -148,12 +151,16 @@ function subsequenceWindow(a: string, target: string): [number, number] | null {
  * 「华硕天选6游戏本」→ 去品牌 "天选6游戏本" → 提取 "天选6"；
  * 「ASUS天选6」→ 去品牌 "天选6" → 提取 "天选6"。
  * 用于 OCR 无空格连写（品牌+型号+泛词）时仍能命中站内名。 */
-function extractModelCore(stripped: string): string {
-  // 中文/字母段 + 数字段（数字前最多 6 个中文或字母，数字后跟字母）
-  const m = stripped.match(/^([\u4e00-\u9fff a-z]{1,6}\d+[a-z]*)/);
+function extractModelCore(raw: string): string {
+  // 先剥离末尾年份：「型号+年份」连写（"战神z82025" → "战神z8"），
+  // 否则 \d 贪婪会把 z8+2025 连读，把整个 token 当 core（core===stripped 被跳过）。
+  const stripped = raw.replace(/20\d{2}$/, '');
+  // 中文/字母段 + 数字段（数字前最多 6 个中文或字母，数字后跟字母）；
+  // 数字段限 1~4 位，避免吞掉后续数字
+  const m = stripped.match(/^([\u4e00-\u9fff a-z]{1,6}\d{1,4}[a-z]*)/);
   if (m && /\d/.test(m[1]) && /[\u4e00-\u9fff]/.test(m[1])) return m[1];
   // 兜底：数字前至少 1 个中文，避免纯数字/纯字母
-  const m2 = stripped.match(/([\u4e00-\u9fff]{1,6}\d+[a-z]*)/);
+  const m2 = stripped.match(/([\u4e00-\u9fff]{1,6}\d{1,4}[a-z]*)/);
   return m2 && /\d/.test(m2[1]) ? m2[1] : '';
 }
 
@@ -161,18 +168,19 @@ function extractModelCore(stripped: string): string {
  * 为笔记本生成"可搜索别名"（归一化小写、无空格）：
  * 覆盖「型号+年份」连写（y9000p2022 → 拯救者Y9000P 2022款）、
  * 去中文品牌前缀（y9000p）、英文系列名（legiony9000p）、
- * id 尾段（y9000p16iah7）等非标准写法。
+ * id 尾段（y9000p16iah7）、英文型号（OMEN 16-2025 → omen162025）等非标准写法。
  * 年份只挂在对应 release 年的机型上，避免 y9000p2022 误中其他年份款。
  * 识别匹配（matchLaptopsInText）与列表搜索（LaptopListPage）共用。 */
 export function laptopSearchKeywords(l: Laptop): string[] {
   const year = l.release?.slice(0, 4) ?? '';
   const norm = normModel(l.displayName);
-  const kw = new Set<string>([norm, l.model.toLowerCase(), l.series.toLowerCase(), normModel(l.id)]);
+  const modelNorm = normModel(l.model);
+  const kw = new Set<string>([norm, modelNorm, l.series.toLowerCase(), normModel(l.id)]);
   // displayName 去掉中文品牌前缀："拯救者y9000p" → "y9000p"
   const bare = BRANDS_CN.reduce((s, b) => s.replace(b, ''), norm);
   if (bare && bare !== norm) {
     kw.add(bare);
-    kw.add(`${bare}${l.model.toLowerCase()}`);
+    kw.add(`${bare}${modelNorm}`);
     if (year) kw.add(`${bare}${year}`);
   }
   if (year) {
@@ -194,63 +202,117 @@ export function matchLaptopsInText(text: string, extraLaptops: Laptop[] = []): M
   // 对每个站内名 d 检查"d 的字符是否按顺序出现在干净文本中且窗口不太大"，
   // 覆盖 "天选6选哪一个套餐" / "天 选 6 选 哪 一 个 套 餐" 等大量无关字符混在型号里的场景。
   const cleanText = normModel(text);
-  const results: MatchResult<Laptop>[] = [];
-  const matchedIds = new Set<string>();
+  // 文本级年份：cleanText 中出现 20xx → 要求命中款的 release 年份与之匹配，
+  // 避免 "拯救者y9000p2022" / "拯救者Y9000P 2022" 命中所有年份的 Y9000P 款。
+  // 软过滤：严格匹配无结果时（如"天选6 2026"而站内天选6=2025款），去掉年份约束再试一次。
+  const yearsInText = new Set(cleanText.match(/20\d{2}/g) ?? []);
   const pool = [...allLaptops, ...extraLaptops];
-  for (const laptop of pool) {
-    if (matchedIds.has(laptop.id)) continue;
-    const d = normModel(laptop.displayName);
-    if (d.length < 3) continue;
-    let pushed = false;
-    for (const { tok, stripped } of all) {
-      // 型号特征：含数字或中文（排除 "ultra"/"radeon" 等泛词）
-      if (stripped.length < 3) continue;
-      if (!(/\d/.test(stripped) || /[\u4e00-\u9fff]/.test(stripped))) continue;
-      // 排除纯数字 token（年份/功耗如 "2025"/"140w"，会误匹配所有同年款）
-      if (/^\d+$/.test(stripped)) continue;
-      // 双向包含：站内名包含 token（"暗影精灵10" ⊂ 站内名），
-      // 或 token 包含站内名（OCR 输出完整型号串 "rog幻16air2025" 时也能命中）
-      if (d.includes(stripped) || stripped.includes(d)) {
-        results.push({ item: laptop, matchedText: tok });
-        matchedIds.add(laptop.id);
-        pushed = true;
-        break;
+
+  const run = (useYearFilter: boolean): MatchResult<Laptop>[] => {
+    const results: MatchResult<Laptop>[] = [];
+    const matchedIds = new Set<string>();
+    for (const laptop of pool) {
+      if (matchedIds.has(laptop.id)) continue;
+      // 文本指定了年份 → 该款 release 年份必须匹配（覆盖含全文子序列在内的所有匹配路径）
+      if (useYearFilter) {
+        const relY = laptop.release?.slice(0, 4);
+        if (!relY || !yearsInText.has(relY)) continue;
       }
-      // 型号核心兜底：连写 token（"华硕天选6游戏本"）提取 "天选6" 后命中站内名；
-      // 用近似子序列覆盖 OCR 字符级切分导致 "天6" 对应 "天选6" 的场景。
-      const core = extractModelCore(stripped);
-      if (core && core.length >= 2 && core !== stripped && isApproxSubsequence(core, d)) {
-        results.push({ item: laptop, matchedText: tok });
-        matchedIds.add(laptop.id);
-        pushed = true;
-        break;
-      }
-      // 别名兜底：「型号+年份」连写 / 英文系列名 / id 尾段等非标准写法
-      // （"y9000p2022" → 拯救者Y9000P 2022款；"legiony9000p" → Legion 系列）。
-      // 年份化别名只在对应 release 年的机型上生成，天然规避跨年份误匹配。
-      const hitKw = laptopSearchKeywords(laptop).find((k) => stripped.includes(k) || k.includes(stripped));
-      if (hitKw) {
-        results.push({ item: laptop, matchedText: tok });
-        matchedIds.add(laptop.id);
-        pushed = true;
-        break;
-      }
-    }
-    if (pushed) continue;
-    // 全文子序列兜底：d 的所有字符按顺序出现在 cleanText 中，且窗口长度 ≤ d.length * 2 + 2
-    // 覆盖 "天选6选哪一个套餐"、"天 选 6 选 哪 一 个 套 餐" 等
-    if (cleanText.length >= d.length) {
-      const win = subsequenceWindow(d, cleanText);
-      if (win) {
-        const winLen = win[1] - win[0] + 1;
-        // 窗口容忍度：d 长度内允许 d.length 大小的 gap（覆盖 OCR 字符级切分与无关字符干扰）
-        if (winLen <= d.length * 2 + 2) {
-          results.push({ item: laptop, matchedText: cleanText.slice(win[0], win[1] + 1) });
+      const d = normModel(laptop.displayName);
+      // 短名（"G5"/"旷世"）也参与匹配：靠包含/别名匹配自然限制，不整体跳过
+      if (d.length < 2) continue;
+      let pushed = false;
+      for (const { tok, stripped } of all) {
+        // 长度 ≥2 即放行（覆盖 "S8"/"G5"/"天选" 等短型号）
+        if (stripped.length < 2) continue;
+        // 型号特征：含数字或中文（排除 "ultra"/"radeon" 等泛词）。
+        // 纯英文 token（"omen"/"titan"/"pulse"）跳过双向包含，但仍可走下方别名匹配
+        const isModelish = /\d/.test(stripped) || /[\u4e00-\u9fff]/.test(stripped);
+        // 排除纯数字 token（年份/功耗如 "2025"/"140w"，会误匹配所有同年款）；
+        // 5 位以上纯数字（"162025"）放行——可精确匹配 model 别名尾段（OMEN 16-2025 → omen162025）
+        if (/^\d+$/.test(stripped) && stripped.length <= 4) continue;
+
+        // 【年份精确匹配】token 以 20xx（或 20xx款）结尾：
+        // 型号部分命中 + release 年份必须等于 token 年份，否则不命中。
+        // 避免 "拯救者y9000p2022" 命中所有年份的 Y9000P 款。
+        // base 长度 ≥3：防止 "162025" 被拆成 base="16"+year="2025"，"16" 太短导致误匹配所有含 16 的款。
+        const yearTok = stripped.match(/^(.*?)(20\d{2})(?:款)?$/);
+        if (yearTok && yearTok[1] && yearTok[1].length >= 3 && yearTok[1] !== stripped) {
+          const base = yearTok[1];
+          const year = yearTok[2];
+          const core = extractModelCore(base);
+          const baseHit =
+            (isModelish && (d.includes(base) || base.includes(d))) ||
+            (core && core.length >= 2 && isApproxSubsequence(core, d)) ||
+            laptopSearchKeywords(laptop).some((k) => base.includes(k) || k.includes(base));
+          if (baseHit) {
+            if (laptop.release?.slice(0, 4) === year) {
+              results.push({ item: laptop, matchedText: tok });
+              matchedIds.add(laptop.id);
+              pushed = true;
+              break;
+            }
+            // 型号部分命中但年份不符 → 跳过该 token，不误伤其他年份款
+            continue;
+          }
+        }
+
+        // 双向包含：站内名包含 token（"暗影精灵10" ⊂ 站内名），
+        // 或 token 包含站内名（OCR 输出完整型号串 "rog幻16air2025" 时也能命中）
+        if (isModelish && (d.includes(stripped) || stripped.includes(d))) {
+          results.push({ item: laptop, matchedText: tok });
           matchedIds.add(laptop.id);
+          pushed = true;
+          break;
+        }
+        // 型号核心兜底：连写 token（"华硕天选6游戏本"）提取 "天选6" 后命中站内名；
+        // 用近似子序列覆盖 OCR 字符级切分导致 "天6" 对应 "天选6" 的场景。
+        const core = isModelish ? extractModelCore(stripped) : '';
+        if (core && core.length >= 2 && core !== stripped && isApproxSubsequence(core, d)) {
+          results.push({ item: laptop, matchedText: tok });
+          matchedIds.add(laptop.id);
+          pushed = true;
+          break;
+        }
+        // 别名兜底：「型号+年份」连写 / 英文系列名 / 英文型号词 / id 尾段等非标准写法
+        // （"y9000p2022" → 拯救者Y9000P 2022款；"legiony9000p" → Legion 系列）。
+        // 年份化别名只在对应 release 年的机型上生成，天然规避跨年份误匹配。
+        // 纯英文 token（"pro"/"air"/"max" 等通用后缀词）要求别名以它开头，避免 "pro" 命中所有 Pro 款。
+        // 注意：stripped.includes(k) 方向要求 k 长度 ≥3——排除 2 字 series 名（"天选"/"枪神"），
+        // 否则 "天选6" 因包含 series"天选"而命中所有天选系列款。
+        const kws = laptopSearchKeywords(laptop);
+        const hitKw = isModelish
+          ? kws.find((k) => (k.length >= 3 && stripped.includes(k)) || k.includes(stripped))
+          : kws.find((k) => k.startsWith(stripped));
+        if (hitKw) {
+          results.push({ item: laptop, matchedText: tok });
+          matchedIds.add(laptop.id);
+          pushed = true;
+          break;
+        }
+      }
+      if (pushed) continue;
+      // 全文子序列兜底：d 的所有字符按顺序出现在 cleanText 中，且窗口长度 ≤ d.length * 2 + 2
+      // 覆盖 "天选6选哪一个套餐"、"天 选 6 选 哪 一 个 套 餐" 等
+      // d 长度 ≥3：避免 2 字短名（"G5"/"G7"）在任意含 g7 的文本中误命中
+      if (d.length >= 3 && cleanText.length >= d.length) {
+        const win = subsequenceWindow(d, cleanText);
+        if (win) {
+          const winLen = win[1] - win[0] + 1;
+          // 窗口容忍度：d 长度内允许 d.length 大小的 gap（覆盖 OCR 字符级切分与无关字符干扰）
+          if (winLen <= d.length * 2 + 2) {
+            results.push({ item: laptop, matchedText: cleanText.slice(win[0], win[1] + 1) });
+            matchedIds.add(laptop.id);
+          }
         }
       }
     }
-  }
+    return results;
+  };
+
+  // 先严格（年份过滤）；无结果再宽松（年份视为噪音，如"天选6 2026"站内为 2025 款）
+  let results = yearsInText.size > 0 ? run(true) : run(false);
+  if (results.length === 0 && yearsInText.size > 0) results = run(false);
   return results;
 }
 
