@@ -8,7 +8,7 @@ import { apiCollect, apiList } from '../utils/apiClient';
 import { matchChipsInText, matchLaptopsInText, extractUnknownCandidates } from '../utils/modelMatcher';
 import type { UnknownCandidate } from '../utils/modelMatcher';
 import { useCollectSync } from '../hooks/useCollectSync';
-import { ensureEngine, resetEngine, setEngineStatusCb, warmup } from '../utils/ocrEngine';
+import { ensureEngine, prepareImage, resetEngine, setEngineStatusCb, warmup } from '../utils/ocrEngine';
 
 export default function RecognizeModal({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
@@ -99,7 +99,7 @@ export default function RecognizeModal({ onClose }: { onClose: () => void }) {
   // 用户粘贴图片 + 点击识别期间引擎通常已就绪，识别秒级响应）
   useEffect(() => {
     setPhase('prewarming');
-    setStatusText('正在后台预热识别引擎…（首次约 40MB，之后自动缓存复用）');
+    setStatusText('正在后台预热识别引擎…（首次约 11MB，之后自动缓存复用）');
     setEngineStatusCb((status, progress, p) => {
       if (p === 'loading' || p === 'downloading') {
         setPhase(p);
@@ -153,7 +153,9 @@ export default function RecognizeModal({ onClose }: { onClose: () => void }) {
       setPhase('recognizing');
       setStatusText('识别中…');
       setProgress(0);
-      const { data } = await worker.recognize(file);
+      // 移动端优化：大图先等比缩小（≤2400px），省内存、加快识别
+      const prepared = await prepareImage(file);
+      const { data } = await worker.recognize(prepared);
       if (cancelledRef.current) {
         setPhase('idle');
         setText('');
@@ -380,7 +382,7 @@ export default function RecognizeModal({ onClose }: { onClose: () => void }) {
               )}
               <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-[11px] leading-5 text-slate-400">
-                  首次使用需下载识别引擎与语言包（约 40MB），通常 10-60 秒；引擎复用后第二次识别无需再次下载。下载完成后自动缓存到浏览器，后续秒级启动。
+                  首次使用需下载识别引擎与语言包（约 11MB，比旧版 40MB 快 3 倍以上），通常 5-30 秒；下载后自动缓存到浏览器，后续秒级启动。
                 </p>
                 <button
                   type="button"

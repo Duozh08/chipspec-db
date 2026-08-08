@@ -1,14 +1,16 @@
 /**
  * OCR 识别引擎管理：模块级单例 + 预热 + 复用。
  *
- * 之前每次识别都 createWorker + terminate → 每次重新下载 ~8MB 核心
- * （importScripts 同步加载、无 IndexedDB 缓存）+ 检查 31MB 语言包，导致"总是卡加载"。
+ * 之前每次识别都 createWorker + terminate → 每次重新下载核心与语言包，导致"总是卡加载"。
+ * 且本地 tessdata 之前只部署了非 LSTM core 变体，而 oem=1(LSTM_ONLY) 实际请求
+ * tesseract-core-*-lstm.wasm.js → 本地 404 → 全部走 CDN，多设备首次加载必卡。
  *
- * 现在：
- * 1. worker 全局复用：核心/语言包只加载一次，之后识别秒级响应；
- * 2. 弹窗打开即后台预热（warmup），用户粘贴图片期间引擎已就绪；
- * 3. local 优先，失败自动 fallback CDN；
- * 4. 引擎级错误（加载/网络）自动重建，识别级错误不影响复用。
+ * 现状（多设备友好）：
+ * 1. tessdata 全变体本地化：simd / relaxedsimd / 普通 × LSTM，全设备本地直载，不依赖 CDN；
+ * 2. 语言包用 LSTM best_int 模型（1.7+3.0MB），替代完整版（20+11MB），首次加载 40MB → ~11MB；
+ * 3. worker 全局复用 + 弹窗预热：核心/语言包只下载一次，之后识别秒级响应；
+ * 4. 识别前图片缩放（≤2400px）：移动端省内存、加快识别；
+ * 5. 引擎级错误（加载/网络）自动重建，识别级错误不影响复用。
  */
 
 export interface OcrEngineHandle {
@@ -24,6 +26,10 @@ const TESS_BASE = `${import.meta.env.BASE_URL}tessdata/`;
 const CDN_WORKER = 'https://cdn.jsdelivr.net/npm/tesseract.js@v7.0.0/dist/worker.min.js';
 const CDN_CORE = 'https://cdn.jsdelivr.net/npm/tesseract.js-core@v7.0.0';
 const CDN_LANG = 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/';
+/** 缓存命名空间：v3 = LSTM best_int 语言包（隔离旧版完整语言包缓存） */
+const CACHE_NS = 'tess-fast-v3';
+/** 识别前图片最长边（px）上限：超出则缩放，移动端省内存/加快识别 */
+const MAX_IMAGE_DIM = 2400;
 
 let enginePromise: Promise<OcrEngineHandle> | null = null;
 let statusCb: EngineStatusFn | null = null;
@@ -41,24 +47,58 @@ function emit(status: string, progress?: number, phase?: string) {
   }
 }
 
-/** 创建 worker（source 决定本地/CDN） */
+/** 创建 worker（source 决定本地/CDN；oem=1 为 LSTM_ONLY，加载 -lstm core 变体） */
 async function buildWorker(useCdn: boolean): Promise<OcrEngineHandle> {
   const Tesseract = (await import('tesseract.js')).default;
   const worker = await Tesseract.createWorker(['chi_sim', 'eng'], 1, {
     workerPath: useCdn ? CDN_WORKER : `${TESS_BASE}worker.min.js`,
     corePath: useCdn ? CDN_CORE : TESS_BASE,
     langPath: useCdn ? CDN_LANG : TESS_BASE,
+    cachePath: CACHE_NS,
     logger: (m: { status: string; progress: number }) => {
       if (m.status === 'loading tesseract core') {
-        emit(`加载识别引擎核心… ${Math.round(m.progress * 100)}%（约 8MB）`, m.progress, 'loading');
+        emit(`加载识别引擎核心… ${Math.round(m.progress * 100)}%（约 7MB）`, m.progress, 'loading');
       } else if (m.status === 'initializing tesseract') {
         emit('初始化识别引擎…', undefined, 'loading');
       } else if (m.status === 'loading language traineddata') {
-        emit(`加载中文/英文语言模型… ${Math.round(m.progress * 100)}%（首次约 30MB，之后自动缓存）`, m.progress, 'downloading');
+        emit(`加载中文/英文语言模型… ${Math.round(m.progress * 100)}%（首次约 5MB，之后自动缓存）`, m.progress, 'downloading');
       }
     },
   });
   return { worker, source: useCdn ? 'cdn' : 'local' };
+}
+
+/**
+ * 识别前预处理：图片最长边超过 MAX_IMAGE_DIM 时用 canvas 等比缩小，
+ * 显著降低移动端内存占用与识别耗时；小图原样返回。
+ */
+export async function prepareImage(file: File, maxDim = MAX_IMAGE_DIM): Promise<File | Blob> {
+  try {
+    const url = URL.createObjectURL(file);
+    try {
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const el = new Image();
+        el.onload = () => resolve(el);
+        el.onerror = () => reject(new Error('图片解码失败'));
+        el.src = url;
+      });
+      const scale = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
+      if (scale >= 1) return file;
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return file;
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      return await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('图片压缩失败'))), 'image/png');
+      });
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  } catch {
+    return file;
+  }
 }
 
 /** 获取引擎（单例）：本地优先，失败自动降级 CDN；已创建则直接返回 */
