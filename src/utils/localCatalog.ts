@@ -6,7 +6,7 @@
  * AI 深度补全（Die 尺寸/TDP 等）通过导出清单管道在数据更新时合并。
  */
 
-import type { Brand, Chip } from '../data/types';
+import type { Brand, Chip, DieInfo } from '../data/types';
 import type { Laptop, LaptopBrand } from '../data/types';
 import { guessBrand } from './pendingStore';
 
@@ -186,6 +186,48 @@ function toLaptopBrand(item: LocalCatalogItem): LaptopBrand {
   return 'lenovo';
 }
 
+/** 将后端 spec.dies 数组安全转换为 DieInfo[] */
+function parseDiesFromSpec(raw: unknown, fallbackProcess: string, fallbackCodename: string): Chip['dies'] {
+  if (Array.isArray(raw) && raw.length > 0) {
+    return raw.map((d) => {
+      const die = d as Record<string, unknown>;
+      return {
+        name: typeof die.name === 'string' && die.name ? die.name : `${fallbackCodename} Die`,
+        role: die.role === 'compute' || die.role === 'io' || die.role === 'graphics' || die.role === 'cache' || die.role === 'soc' || die.role === 'other'
+          ? (die.role as DieInfo['role'])
+          : 'other',
+        process: typeof die.process === 'string' ? die.process : (fallbackProcess || null),
+        areaMm2: typeof die.areaMm2 === 'number' && die.areaMm2 > 0 ? die.areaMm2 : null,
+        lengthMm: typeof die.lengthMm === 'number' && die.lengthMm > 0 ? die.lengthMm : null,
+        widthMm: typeof die.widthMm === 'number' && die.widthMm > 0 ? die.widthMm : null,
+        transistorsMillions: typeof die.transistorsMillions === 'number' ? die.transistorsMillions : null,
+        ...(typeof die.layout === 'object' && die.layout !== null
+          ? {
+              layout: {
+                x: typeof (die.layout as Record<string, unknown>).x === 'number' ? (die.layout as Record<string, unknown>).x as number : 0.5,
+                y: typeof (die.layout as Record<string, unknown>).y === 'number' ? (die.layout as Record<string, unknown>).y as number : 0.5,
+              },
+            }
+          : {}),
+        ...(typeof die.note === 'string' ? { note: die.note } : {}),
+      };
+    });
+  }
+  // dies 为空但 codename 已知 → 创建默认 Die 条目，让 ChipDiagram 渲染矢量图而非占位
+  if (fallbackCodename && fallbackCodename !== 'AI 自动收录') {
+    return [{
+      name: `${fallbackCodename} Die`,
+      role: 'other',
+      process: fallbackProcess || null,
+      areaMm2: null,
+      lengthMm: null,
+      widthMm: null,
+      transistorsMillions: null,
+    }];
+  }
+  return [];
+}
+
 /** 本地收录条目 → 芯片视图对象（优先使用后端 AI 补全的 spec，缺失字段置空） */
 export function localItemToChip(item: LocalCatalogItem): Chip {
   const s = (item.spec ?? {}) as Record<string, unknown>;
@@ -202,23 +244,27 @@ export function localItemToChip(item: LocalCatalogItem): Chip {
   const formFactor: 'desktop' | 'mobile' = s.formFactor === 'desktop' ? 'desktop' : 'mobile';
   const release = typeof s.release === 'string' && s.release ? s.release : item.createdAt.slice(0, 10);
   const pkg = (typeof s.package === 'object' && s.package !== null ? s.package : {}) as Record<string, unknown>;
+  const codename = typeof s.codename === 'string' && s.codename ? s.codename : 'AI 自动收录';
+  const processStr = typeof s.process === 'string' ? s.process : '';
+  // 解析 dies：优先用 spec 中的 dies 数组；为空但 codename 已知时创建默认 Die 条目
+  const dies = parseDiesFromSpec(s.dies, processStr, codename);
   return {
     id: item.id,
     brand,
     category,
     formFactor,
     model: typeof s.model === 'string' && s.model ? s.model : item.name,
-    codename: typeof s.codename === 'string' && s.codename ? s.codename : 'AI 自动收录',
+    codename,
     generation: typeof s.generation === 'string' ? s.generation : '',
-    process: typeof s.process === 'string' ? s.process : '',
+    process: processStr,
     release,
     package: {
       type: typeof pkg.type === 'string' ? (pkg.type as string) : '',
-      style: pkg.style === 'lga' ? 'lga' : 'bga',
-      lengthMm: null,
-      widthMm: null,
+      style: pkg.style === 'lga' ? 'lga' : pkg.style === 'pga' ? 'pga' : 'bga',
+      lengthMm: typeof pkg.lengthMm === 'number' && pkg.lengthMm > 0 ? pkg.lengthMm : null,
+      widthMm: typeof pkg.widthMm === 'number' && pkg.widthMm > 0 ? pkg.widthMm : null,
     },
-    dies: Array.isArray(s.dies) ? (s.dies as Chip['dies']) : [],
+    dies,
     transistorsMillions: typeof s.transistorsMillions === 'number' ? s.transistorsMillions : null,
     notes: item.desc
       ? `AI 自动收录（${item.status === 'filled' ? '已补全' : 'AI 补全中'}）· ${item.desc}`

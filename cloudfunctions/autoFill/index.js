@@ -258,6 +258,7 @@ function buildPrompt(name, category) {
   }
   return `${base}
 重要：tdp / process / codename 是核心字段。绝大多数已发布芯片都有公开的 TDP 与制程信息（如 TSMC 4N、Intel 7），请基于公开资料如实填写，不要留空；仅当确认该型号不存在时才用 null。
+dies 数组也非常重要：请填写芯片的 Die 信息（至少包含 name、role、areaMm2）。单 Die 芯片填一个元素，多 Die 芯片（如 Chiplet 设计）填多个。role 取值：compute（计算 Die）/ graphics（图形 Die）/ io（I/O Die）/ cache（缓存 Die）/ soc（SoC 模块）/ other。面积不确定填 null。
 输出以下 JSON 结构（芯片）：
 {
   "brand": "intel|amd|nvidia 小写",
@@ -269,6 +270,7 @@ function buildPrompt(name, category) {
   "process": "制程工艺（如 TSMC 4N）或 null",
   "release": "发布月份 YYYY-MM 或 null",
   "package": {"type":"封装类型 LGA/BGA","style":"lga|bga","lengthMm":null,"widthMm":null},
+  "dies": [{"name":"Die 名称（如 GB206 Monolithic Die）","role":"compute|graphics|io|cache|soc|other","process":"Die 制程或 null","areaMm2":Die面积数字或null,"lengthMm":null,"widthMm":null,"transistorsMillions":晶体管百万数或null}],
   "tdp": "TDP 瓦数（数字）或 null",
   "loadTempRange": "满载温度范围或 null",
   "dataQuality": "official|estimated",
