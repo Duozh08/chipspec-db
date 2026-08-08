@@ -27,6 +27,8 @@ export interface LocalCatalogItem {
   status: 'pending' | 'filled';
   /** 后端 AI 补全的完整规格（CloudBase catalog.spec），未补全为 undefined */
   spec?: Record<string, unknown>;
+  /** 后端补全时间戳（毫秒） */
+  filledAt?: number;
   createdAt: string;
 }
 
@@ -132,16 +134,21 @@ export function saveLocalCatalogStatusByName(name: string, status: 'pending' | '
  *  这样本地收录的条目就能显示后端补全的处理器/显卡等硬件参数。 */
 export function saveLocalCatalogFilled(name: string, spec: Record<string, unknown> | null, filledAt?: number): boolean {
   const items = loadLocalCatalog();
-  let hit = false;
+  let changed = false;
   const next = items.map((i) => {
     if (i.name.toLowerCase() === name.toLowerCase()) {
-      hit = true;
-      return { ...i, status: 'filled' as const, spec: spec ?? i.spec, filledAt };
+      const nextSpec = spec ?? i.spec;
+      const specChanged = JSON.stringify(i.spec) !== JSON.stringify(nextSpec);
+      const filledAtChanged = i.filledAt !== filledAt;
+      if (i.status !== 'filled' || specChanged || filledAtChanged) {
+        changed = true;
+        return { ...i, status: 'filled' as const, spec: nextSpec, filledAt };
+      }
     }
     return i;
   });
-  if (hit) save(next);
-  return hit;
+  if (changed) save(next);
+  return changed;
 }
 
 /** 导出本地收录（与待补全清单合并供 AI 管道使用） */
