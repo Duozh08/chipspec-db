@@ -209,6 +209,7 @@ export default function LaptopDetailPage() {
   // 基本规格一键截图状态
   const specsBoxRef = useRef<HTMLDivElement>(null);
   const [capturing, setCapturing] = useState(false);
+  const [copyOk, setCopyOk] = useState(false);
   const [captureMsg, setCaptureMsg] = useState('');
 
   // 合并后的方案（站内静态 + 本地补充，去重）
@@ -347,8 +348,9 @@ export default function LaptopDetailPage() {
     notifyChipAdditionsChanged();
   };
 
-  /** 一键生成基本规格截图：用 Canvas 绘制模块内容并下载 PNG */
-  const handleCaptureSpecs = () => {
+  /** 一键生成基本规格截图：Canvas 绘制模块 → 自动复制到剪贴板（静默，站外可粘贴）；
+   *  浏览器不支持 ClipboardItem 时降级为下载 PNG */
+  const handleCaptureSpecs = async () => {
     if (capturing) return;
     setCapturing(true);
     setCaptureMsg('');
@@ -358,13 +360,16 @@ export default function LaptopDetailPage() {
         ? specsBoxRef.current.offsetWidth
         : 480;
       const canvas = drawSpecsCanvas(specs, width);
-      canvas.toBlob((blob) => {
-        setCapturing(false);
-        if (!blob) {
-          setCaptureMsg('截图生成失败，请重试');
-          setTimeout(() => setCaptureMsg(''), 4000);
-          return;
-        }
+      const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/png'));
+      if (!blob) throw new Error('截图生成失败');
+      // 复制到剪贴板（ClipboardItem：Chrome/Edge 91+、Safari 13.1+）
+      if (navigator.clipboard?.write && typeof ClipboardItem !== 'undefined') {
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+        // 成功：按钮短暂显示绿色对勾，其余静默（不下载、不弹提示）
+        setCopyOk(true);
+        setTimeout(() => setCopyOk(false), 1600);
+      } else {
+        // 不支持图片剪贴板（如 Firefox）→ 降级下载
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -373,14 +378,15 @@ export default function LaptopDetailPage() {
         a.click();
         a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 5000);
-        setCaptureMsg(`已生成「${laptop.displayName}」基本规格截图`);
+        setCaptureMsg('当前浏览器不支持直接复制图片，已改为下载 PNG');
         setTimeout(() => setCaptureMsg(''), 4000);
-      }, 'image/png');
+      }
     } catch (err) {
       console.error(err);
-      setCapturing(false);
-      setCaptureMsg('截图生成失败，请重试');
+      setCaptureMsg('复制截图失败，请重试');
       setTimeout(() => setCaptureMsg(''), 4000);
+    } finally {
+      setCapturing(false);
     }
   };
 
@@ -525,8 +531,12 @@ export default function LaptopDetailPage() {
                 type="button"
                 onClick={handleCaptureSpecs}
                 disabled={capturing}
-                title="仅截取基本规格模块，保存为 PNG 图片"
-                className="flex shrink-0 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-600 shadow-sm transition hover:border-blue-300 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+                title="一键截图并复制到剪贴板，可粘贴到任何地方"
+                className={`flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium shadow-sm transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                  copyOk
+                    ? 'border-green-300 bg-green-50 text-green-600'
+                    : 'border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:text-blue-600'
+                }`}
               >
                 {capturing ? (
                   <>
@@ -534,6 +544,13 @@ export default function LaptopDetailPage() {
                       <path d="M8 2a6 6 0 1 0 6 6" />
                     </svg>
                     生成中…
+                  </>
+                ) : copyOk ? (
+                  <>
+                    <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3.5 8.5l3 3 6-6" />
+                    </svg>
+                    已复制
                   </>
                 ) : (
                   <>
