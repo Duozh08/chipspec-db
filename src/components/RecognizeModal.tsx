@@ -31,6 +31,7 @@ export default function RecognizeModal({ onClose }: { onClose: () => void }) {
   const pasteRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
+  const cancelledRef = useRef(false);
 
   // 轮询后端补全状态：发现已补全 → 刷新本地清单（显示 ✓ 已补全）
   const sync = useCollectSync(2500);
@@ -102,61 +103,117 @@ export default function RecognizeModal({ onClose }: { onClose: () => void }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const handleRecognize = async () => {
+  const handleRecognize = async (useCdn = false) => {
     if (!file) return;
+    cancelledRef.current = false;
     setRecognizing(true);
     setPhase('loading');
     setProgress(0);
-    setStatusText('准备识别引擎…');
+    setStatusText(useCdn ? '正在通过 CDN 加载识别引擎…' : '准备识别引擎…');
     setErrorMsg('');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let worker: any = null;
     let timer: number | undefined;
-    try {
-      const Tesseract = (await import('tesseract.js')).default;
-      const timeout = new Promise<never>((_, reject) => {
-        timer = window.setTimeout(
-          () => reject(new Error('加载超时：识别引擎或中文语言包下载较慢（约 12MB），请检查网络后重试')),
-          150000
-        );
+
+    const createTimeout = (ms: number) =>
+      new Promise<never>((_, reject) => {
+        timer = window.setTimeout(() => reject(new Error('加载超时')), ms);
       });
-      const runOcr = (async () => {
-        // 识别引擎本地化：core / worker / 语言包均从站内同源加载（public/tessdata），
-        // 不再依赖国外 CDN（tessdata.projectnaptha.com / jsdelivr），避免国内网络下载卡住
-        const tessBase = `${import.meta.env.BASE_URL}tessdata/`;
-        worker = await Tesseract.createWorker(['chi_sim', 'eng'], 1, {
-          langPath: tessBase,
-          corePath: `${tessBase}tesseract-core-simd.wasm.js`,
-          workerPath: `${tessBase}worker.min.js`,
-          logger: (m: { status: string; progress: number }) => {
-            if (m.status === 'loading tesseract core') {
-              setPhase('loading');
-              setStatusText(`加载识别引擎… ${Math.round(m.progress * 100)}%`);
-            } else if (m.status === 'initializing tesseract') {
-              setPhase('loading');
-              setStatusText('初始化识别引擎…');
-            } else if (m.status === 'loading language traineddata') {
-              setPhase('downloading');
-              setStatusText('加载中文/英文语言模型… 首次使用约需 30MB，之后自动缓存');
-              setProgress(Math.round(m.progress * 100));
-            } else if (m.status === 'recognizing text') {
-              setPhase('recognizing');
-              setStatusText('识别中…');
-              setProgress(Math.round(m.progress * 100));
-            }
-          },
+
+    const runOcr = async (cfg: {
+      workerUrl: string;
+      coreUrl: string;
+      langUrl: string;
+      source: 'local' | 'cdn';
+    }) => {
+      const Tesseract = (await import('tesseract.js')).default;
+      worker = await Tesseract.createWorker(['chi_sim', 'eng'], 1, {
+        workerPath: cfg.workerUrl,
+        corePath: cfg.coreUrl,
+        langPath: cfg.langUrl,
+        logger: (m: { status: string; progress: number }) => {
+          if (cancelledRef.current) return;
+          if (m.status === 'loading tesseract core') {
+            setPhase('loading');
+            setStatusText(
+              `加载识别引擎核心… ${Math.round(m.progress * 100)}%（首次约 5MB，请耐心等待）`
+            );
+          } else if (m.status === 'initializing tesseract') {
+            setPhase('loading');
+            setStatusText('初始化识别引擎…');
+          } else if (m.status === 'loading language traineddata') {
+            setPhase('downloading');
+            setStatusText(
+              `加载中文/英文语言模型… ${Math.round(m.progress * 100)}%（首次约 30MB，请耐心等待）`
+            );
+            setProgress(Math.round(m.progress * 100));
+          } else if (m.status === 'recognizing text') {
+            setPhase('recognizing');
+            setStatusText('识别中…');
+            setProgress(Math.round(m.progress * 100));
+          }
+        },
+      });
+      if (cancelledRef.current) return '';
+      const { data } = await worker.recognize(file);
+      return data.text || '';
+    };
+
+    try {
+      const tessBase = `${import.meta.env.BASE_URL}tessdata/`;
+      let ocrText = '';
+
+      if (!useCdn) {
+        try {
+          const localPromise = runOcr({
+            workerUrl: `${tessBase}worker.min.js`,
+            // 目录形式：让 worker 根据设备 SIMD 支持自动选择 core 文件，
+            // 避免硬编码 simd 版本在部分浏览器上加载失败
+            coreUrl: tessBase,
+            langUrl: tessBase,
+            source: 'local',
+          });
+          ocrText = await Promise.race([localPromise, createTimeout(180000)]);
+        } catch (localErr) {
+          if (cancelledRef.current) throw new Error('已取消');
+          // 本地失败，自动 fallback CDN
+          setPhase('loading');
+          setStatusText('本地引擎加载失败/超时，正在切换 CDN 重试…');
+          const cdnPromise = runOcr({
+            workerUrl: 'https://cdn.jsdelivr.net/npm/tesseract.js@v7.0.0/dist/worker.min.js',
+            coreUrl: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@v7.0.0',
+            langUrl: 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/',
+            source: 'cdn',
+          });
+          ocrText = await Promise.race([cdnPromise, createTimeout(180000)]);
+        }
+      } else {
+        const cdnPromise = runOcr({
+          workerUrl: 'https://cdn.jsdelivr.net/npm/tesseract.js@v7.0.0/dist/worker.min.js',
+          coreUrl: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@v7.0.0',
+          langUrl: 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/',
+          source: 'cdn',
         });
-        const { data } = await worker.recognize(file);
-        return data.text || '';
-      })();
-      const ocrText = await Promise.race([runOcr, timeout]);
+        ocrText = await Promise.race([cdnPromise, createTimeout(180000)]);
+      }
+
+      if (cancelledRef.current) {
+        setPhase('idle');
+        setText('');
+        return;
+      }
       setText(ocrText || '（未识别到文字，请重试或手动输入型号）');
       runMatch(ocrText || '');
       setPhase('idle');
     } catch (err) {
       console.error(err);
       setPhase('error');
-      setErrorMsg(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      setErrorMsg(
+        msg.includes('已取消')
+          ? '已取消识别，您可以直接在下方输入型号文本进行匹配。'
+          : `识别引擎加载失败：${msg}。请检查网络，或点击「切换 CDN 重试」。`
+      );
     } finally {
       if (timer !== undefined) clearTimeout(timer);
       if (worker) {
@@ -280,13 +337,40 @@ export default function RecognizeModal({ onClose }: { onClose: () => void }) {
           </div>
 
           {/* 立即识别按钮 */}
-          {imageUrl && !recognizing && (
+          {imageUrl && !recognizing && phase !== 'error' && (
             <button
-              onClick={handleRecognize}
+              onClick={() => handleRecognize(false)}
               className="w-full rounded-xl bg-blue-600 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
             >
               🔍 立即识别
             </button>
+          )}
+
+          {/* 手动输入文本匹配（无需等待 OCR 引擎下载） */}
+          {imageUrl && !recognizing && (
+            <div className="rounded-xl border border-slate-200 bg-white">
+              <div className="border-b border-slate-100 px-3 py-2">
+                <span className="text-xs font-semibold text-slate-600">📝 或直接输入型号文本匹配</span>
+              </div>
+              <textarea
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                rows={2}
+                className="w-full resize-y rounded-b-xl p-3 text-sm outline-none"
+                placeholder="例如：天选6选哪一个套餐；拯救者Y7000P 2025；RTX 5060…"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  if (!text.trim()) return;
+                  runMatch(text.trim());
+                }}
+                disabled={!text.trim()}
+                className="m-3 mt-0 rounded-md bg-slate-800 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                匹配文本
+              </button>
+            </div>
           )}
 
           {/* 识别中状态 */}
@@ -312,7 +396,23 @@ export default function RecognizeModal({ onClose }: { onClose: () => void }) {
                   <div className="h-full w-1/3 animate-pulse rounded-full bg-blue-400" />
                 </div>
               )}
-              <p className="mt-2 text-[11px] text-slate-400">首次使用需下载识别引擎与中文语言包（约 15MB），之后自动缓存</p>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-[11px] leading-5 text-slate-400">
+                  首次使用需下载识别引擎与语言包（约 35MB）。由于浏览器使用 importScripts 同步加载核心文件，进度条可能在 0% 停留较长时间，请耐心等待（通常 10-60 秒）。下载完成后会自动缓存，下次无需重复下载。
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    cancelledRef.current = true;
+                    setRecognizing(false);
+                    setPhase('idle');
+                    setStatusText('');
+                  }}
+                  className="shrink-0 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50"
+                >
+                  取消，手动输入
+                </button>
+              </div>
             </div>
           )}
 
@@ -322,9 +422,14 @@ export default function RecognizeModal({ onClose }: { onClose: () => void }) {
               <div className="text-sm font-medium text-red-700">⚠️ 识别失败</div>
               <p className="mt-1 text-xs leading-5 text-red-600">{errorMsg}</p>
               {file && (
-                <button onClick={handleRecognize} className="mt-2 rounded-md border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-50">
-                  ↻ 重试识别
-                </button>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button onClick={() => handleRecognize(false)} className="rounded-md border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-50">
+                    ↻ 本地重试
+                  </button>
+                  <button onClick={() => handleRecognize(true)} className="rounded-md bg-red-600 px-3 py-1 text-xs font-medium text-white hover:bg-red-700">
+                    🌐 切换 CDN 重试
+                  </button>
+                </div>
               )}
             </div>
           )}
