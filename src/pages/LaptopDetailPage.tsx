@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { allLaptops, getLaptopById } from '../data/laptops';
 import { stressTests } from '../data/stress-tests';
@@ -5,6 +6,10 @@ import { allChips } from '../data';
 import type { Chip } from '../data/types';
 import { LAPTOP_BRAND_LABELS, cpuPlatform, fmtDieDims } from '../data/types';
 import { useFavorites } from '../hooks/useFavorites';
+import { getLaptopChipAdditions, addLaptopChipAddition, notifyChipAdditionsChanged } from '../utils/laptopChipAdditions';
+import { apiCollect } from '../utils/apiClient';
+import { addLocalCatalogItem } from '../utils/localCatalog';
+import { addPendingItem, guessBrand } from '../utils/pendingStore';
 
 /** 从显卡方案字符串解析功耗，如 "RTX 4060 (140W)" → "140W" */
 function parsePower(s: string): string | null {
@@ -16,9 +21,10 @@ function normModel(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '');
 }
 
-/** 匹配移动端 CPU 芯片（精确 → 直接包含 → 核心编号，命中多个时取最短型号） */
-function matchCpu(query: string): Chip | undefined {
-  const cpus = allChips.filter((c) => c.category === 'cpu' && c.formFactor === 'mobile');
+/** 匹配 CPU 芯片（精确 → 直接包含 → 核心编号，命中多个时取最短型号）。formFactor 可选，默认全部（含桌面端） */
+function matchCpu(query: string, formFactor?: 'mobile' | 'desktop'): Chip | undefined {
+  let cpus = allChips.filter((c) => c.category === 'cpu');
+  if (formFactor) cpus = cpus.filter((c) => c.formFactor === formFactor);
   const q = normModel(query);
   if (q.length >= 4) {
     const exact = cpus.find((c) => normModel(c.model) === q);
@@ -37,15 +43,14 @@ function matchCpu(query: string): Chip | undefined {
   return undefined;
 }
 
-/** 匹配移动端 GPU 芯片（RTX/GTX/RX 编号提取；区分 Ti 版本） */
-function matchGpu(query: string): Chip | undefined {
+/** 匹配 GPU 芯片（RTX/GTX/RX 编号提取；区分 Ti 版本）。formFactor 可选，默认全部 */
+function matchGpu(query: string, formFactor?: 'mobile' | 'desktop'): Chip | undefined {
   const lower = query.toLowerCase();
   const m = lower.match(/(rtx\s*\d+)/) ?? lower.match(/(gtx\s*\d+)/) ?? lower.match(/(rx\s*\d+)/);
   if (!m) return undefined;
   const key = m[1].replace(/\s+/g, '');
-  const cands = allChips.filter(
-    (c) => c.category === 'gpu' && c.formFactor === 'mobile' && normModel(c.model).includes(key)
-  );
+  let cands = allChips.filter((c) => c.category === 'gpu' && normModel(c.model).includes(key));
+  if (formFactor) cands = cands.filter((c) => c.formFactor === formFactor);
   if (cands.length === 0) return undefined;
   const isTi = /\bti\b/i.test(lower.replace(/\s+/g, ' '));
   if (isTi) return cands.find((c) => normModel(c.model).includes('ti')) ?? cands[0];
@@ -80,14 +85,26 @@ export default function LaptopDetailPage() {
   const year = laptop.release ? laptop.release.slice(0, 4) : '';
   const stress = stressTests[laptop.id];
 
+  // 本地补充方案（用户手动提交的处理器/显卡）
+  const [additions, setAdditions] = useState<{ cpus: string[]; gpus: string[] }>(() => getLaptopChipAdditions(laptop.id));
+  // 提交表单状态
+  const [chipType, setChipType] = useState<'cpu' | 'gpu'>('cpu');
+  const [chipInput, setChipInput] = useState('');
+  const [chipMsg, setChipMsg] = useState<{ kind: 'ok' | 'info' | 'err'; text: string } | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  // 合并后的方案（站内静态 + 本地补充，去重）
+  const allCpuOptions = [...laptop.cpuOptions, ...additions.cpus.filter((c) => !laptop.cpuOptions.some((x) => x.toLowerCase() === c.toLowerCase()))];
+  const allGpuOptions = [...laptop.gpuOptions, ...additions.gpus.filter((g) => !laptop.gpuOptions.some((x) => x.toLowerCase() === g.toLowerCase()))];
+
   // 按平台分组 CPU 方案
-  const intelCpus = laptop.cpuOptions.filter((c) => cpuPlatform(c) === 'intel');
-  const amdCpus = laptop.cpuOptions.filter((c) => cpuPlatform(c) === 'amd');
+  const intelCpus = allCpuOptions.filter((c) => cpuPlatform(c) === 'intel');
+  const amdCpus = allCpuOptions.filter((c) => cpuPlatform(c) === 'amd');
   const hasIntel = intelCpus.length > 0;
   const hasAmd = amdCpus.length > 0;
 
   // 最大显卡功耗（解析 gpuOptions 中的功耗标注）
-  const gpuPowers = laptop.gpuOptions
+  const gpuPowers = allGpuOptions
     .map((g) => g.match(/\((\d+)\s*W\)/i)?.[1])
     .filter(Boolean)
     .map(Number);
@@ -131,13 +148,84 @@ export default function LaptopDetailPage() {
     ['型号', laptop.model],
     ['发布时间', laptop.release ?? '暂无数据'],
     ['处理器平台', hasAmd && hasIntel ? 'Intel + AMD 双平台' : hasAmd ? 'AMD' : 'Intel'],
-    ['处理器方案', `${laptop.cpuOptions.length} 种（${laptop.cpuOptions.join(' / ')}）`],
-    ['显卡方案', `${laptop.gpuOptions.length} 种（${laptop.gpuOptions.join(' / ')}）`],
+    ['处理器方案', `${allCpuOptions.length} 种（${allCpuOptions.join(' / ')}）`],
+    ['显卡方案', `${allGpuOptions.length} 种（${allGpuOptions.join(' / ')}）`],
     ['最大显卡功耗', maxGpuPowerW != null ? `${maxGpuPowerW} W` : '暂无数据'],
     ['内存', laptop.ram],
     ['硬盘', laptop.storage],
     ['屏幕', laptop.display],
   ];
+
+  /** 提交处理器/显卡方案：站内有芯片数据 → 直接加入；没有 → 触发 AI 补录 */
+  const handleSubmitChip = async () => {
+    const name = chipInput.trim();
+    if (!name) {
+      setChipMsg({ kind: 'err', text: '请输入型号名称' });
+      return;
+    }
+    if (submitting) return;
+    setSubmitting(true);
+    setChipMsg(null);
+    try {
+      // 查站内芯片库：游戏本场景优先移动端，未命中再回退桌面端
+      const chipInfo =
+        chipType === 'cpu'
+          ? (matchCpu(name, 'mobile') ?? matchCpu(name, 'desktop'))
+          : (matchGpu(name, 'mobile') ?? matchGpu(name, 'desktop'));
+      if (chipInfo) {
+        // 站内已有该芯片 → 直接加入本地补充方案
+        addLaptopChipAddition(laptop.id, chipType, name);
+        setAdditions(getLaptopChipAdditions(laptop.id));
+        notifyChipAdditionsChanged();
+        setChipMsg({ kind: 'ok', text: `站内已有该芯片（${chipInfo.model}），已加入本机方案` });
+      } else {
+        // 站内没有 → 触发 AI 补录
+        const brand = guessBrand(name);
+        let backend = false;
+        try {
+          await apiCollect(name, 'chip', brand);
+          backend = true;
+        } catch {
+          backend = false;
+        }
+        await addLocalCatalogItem(name, 'chip', brand);
+        addPendingItem({
+          name,
+          category: 'chip',
+          brand,
+          note: backend ? '游戏本方案补录，已提交后端 AI 补全' : '游戏本方案补录（本地）',
+        });
+        addLaptopChipAddition(laptop.id, chipType, name);
+        setAdditions(getLaptopChipAdditions(laptop.id));
+        notifyChipAdditionsChanged();
+        setChipMsg({
+          kind: 'info',
+          text: backend ? '站内暂无该芯片，已触发 AI 自动补录（芯片列表将显示 NEW），并加入本机方案' : '站内暂无该芯片，已本地收录（芯片列表显示 NEW），并加入本机方案',
+        });
+      }
+    } catch (err) {
+      console.error(err);
+      setChipMsg({ kind: 'err', text: '提交失败，请重试' });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // 跨页同步：其他标签页提交了补充方案后本页自动刷新
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'chipspec-laptop-chip-additions') {
+        setAdditions(getLaptopChipAdditions(laptop.id));
+      }
+    };
+    const onCustom = () => setAdditions(getLaptopChipAdditions(laptop.id));
+    window.addEventListener('storage', onStorage);
+    window.addEventListener('chipspec-laptop-chip-additions', onCustom);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('chipspec-laptop-chip-additions', onCustom);
+    };
+  }, [laptop.id]);
 
   return (
     <div className="space-y-5">
@@ -215,7 +303,7 @@ export default function LaptopDetailPage() {
               </div>
               <div className="rounded-lg bg-slate-50 p-2.5">
                 <div className="text-xs text-slate-500">处理器方案</div>
-                <div className="mt-0.5 text-sm font-medium text-slate-800">{laptop.cpuOptions.length} 种</div>
+                <div className="mt-0.5 text-sm font-medium text-slate-800">{allCpuOptions.length} 种</div>
               </div>
               <div className="rounded-lg bg-slate-50 p-2.5">
                 <div className="text-xs text-slate-500">最大显卡功耗</div>
@@ -274,7 +362,7 @@ export default function LaptopDetailPage() {
           {/* 处理器方案 */}
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
             <div className="border-b border-slate-100 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700">
-              处理器方案（共 {laptop.cpuOptions.length} 种）<span className="ml-2 text-xs font-normal text-slate-400">点击可查看芯片详情</span>
+              处理器方案（共 {allCpuOptions.length} 种）<span className="ml-2 text-xs font-normal text-slate-400">点击可查看芯片详情</span>
             </div>
             <div className="p-4">
               {/* Intel 方案 */}
@@ -286,13 +374,17 @@ export default function LaptopDetailPage() {
                   </div>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {intelCpus.map((cpu, i) => {
-                  const chipInfo = matchCpu(cpu);
+                  const chipInfo = matchCpu(cpu, 'mobile');
+                  const isAdd = additions.cpus.some((c) => c.toLowerCase() === cpu.toLowerCase());
                   const inner = (
                     <>
                       <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
                         {i + 1}
                       </span>
                       <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700">{cpu}</span>
+                      {isAdd && (
+                        <span className="shrink-0 rounded bg-blue-600/10 px-1.5 py-0.5 text-[10px] font-medium text-blue-600">补充</span>
+                      )}
                       {chipInfo && (
                         <>
                           <span className="shrink-0 rounded bg-white/70 px-1.5 py-0.5 text-[10px] text-slate-500">
@@ -330,13 +422,17 @@ export default function LaptopDetailPage() {
               </div>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {amdCpus.map((cpu, i) => {
-                  const chipInfo = matchCpu(cpu);
+                  const chipInfo = matchCpu(cpu, 'mobile');
+                  const isAdd = additions.cpus.some((c) => c.toLowerCase() === cpu.toLowerCase());
                   const inner = (
                     <>
                       <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-red-600 text-xs font-bold text-white">
                         {i + 1}
                       </span>
                       <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700">{cpu}</span>
+                      {isAdd && (
+                        <span className="shrink-0 rounded bg-red-600/10 px-1.5 py-0.5 text-[10px] font-medium text-red-600">补充</span>
+                      )}
                       {chipInfo && (
                         <>
                           <span className="shrink-0 rounded bg-white/70 px-1.5 py-0.5 text-[10px] text-slate-500">
@@ -371,19 +467,23 @@ export default function LaptopDetailPage() {
       {/* 显卡方案 */}
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         <div className="border-b border-slate-100 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700">
-          显卡方案（共 {laptop.gpuOptions.length} 种）
+          显卡方案（共 {allGpuOptions.length} 种）
         </div>
         <div className="p-4">
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {laptop.gpuOptions.map((gpu, i) => {
+            {allGpuOptions.map((gpu, i) => {
               const power = parsePower(gpu);
-              const chipInfo = matchGpu(gpu);
+              const chipInfo = matchGpu(gpu, 'mobile');
+              const isAdd = additions.gpus.some((g) => g.toLowerCase() === gpu.toLowerCase());
               const inner = (
                 <div className="flex items-center gap-2">
                   <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-green-600 text-xs font-bold text-white">
                     {i + 1}
                   </span>
                   <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700">{gpu}</span>
+                  {isAdd && (
+                    <span className="shrink-0 rounded bg-green-600/10 px-1.5 py-0.5 text-[10px] font-medium text-green-700">补充</span>
+                  )}
                   {power && (
                     <span className="shrink-0 rounded-full bg-green-600/10 px-2 py-0.5 text-xs font-medium text-green-700">
                       {power}
@@ -463,6 +563,72 @@ export default function LaptopDetailPage() {
             暂无该机型的第三方烤机实测数据（数据来源：笔吧评测室等评测，当前已收录 92 款热门机型的单烤/双烤数据）
           </p>
         )}
+      </div>
+
+      {/* 提交缺失的处理器/显卡方案 */}
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="border-b border-slate-100 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700">
+          ➕ 补充缺失的处理器 / 显卡方案
+        </div>
+        <div className="p-4">
+          <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
+            <div className="flex shrink-0 gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1">
+              <button
+                type="button"
+                onClick={() => setChipType('cpu')}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                  chipType === 'cpu' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:bg-white'
+                }`}
+              >
+                处理器 CPU
+              </button>
+              <button
+                type="button"
+                onClick={() => setChipType('gpu')}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                  chipType === 'gpu' ? 'bg-green-600 text-white shadow-sm' : 'text-slate-500 hover:bg-white'
+                }`}
+              >
+                显卡 GPU
+              </button>
+            </div>
+            <input
+              value={chipInput}
+              onChange={(e) => setChipInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleSubmitChip();
+              }}
+              placeholder={chipType === 'cpu' ? '如 i9-14900HX、R9 7945HX' : '如 RTX 5060 (140W)、RTX 4080 Laptop'}
+              className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+            />
+            <button
+              type="button"
+              onClick={handleSubmitChip}
+              disabled={submitting}
+              className={`shrink-0 rounded-lg px-4 py-2 text-sm font-semibold text-white shadow-sm transition ${
+                chipType === 'cpu' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-green-600 hover:bg-green-700'
+              } disabled:cursor-not-allowed disabled:opacity-60`}
+            >
+              {submitting ? '提交中…' : '提交并收录'}
+            </button>
+          </div>
+          {chipMsg && (
+            <div
+              className={`mt-2.5 rounded-lg border px-3 py-2 text-xs leading-5 ${
+                chipMsg.kind === 'ok'
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                  : chipMsg.kind === 'info'
+                    ? 'border-amber-200 bg-amber-50 text-amber-700'
+                    : 'border-red-200 bg-red-50 text-red-600'
+              }`}
+            >
+              {chipMsg.kind === 'ok' ? '✅' : chipMsg.kind === 'info' ? '🔄' : '⚠️'} {chipMsg.text}
+            </div>
+          )}
+          <p className="mt-2 text-[11px] leading-5 text-slate-400">
+            若站内芯片库已有该型号，将直接加入本机方案（可点击查看芯片详情）；若没有，将自动触发 AI 补录并在芯片列表显示 NEW。补充数据保存在本机，站长核对后可并入正式库。
+          </p>
+        </div>
       </div>
 
       {/* 同品牌相关机型 */}
