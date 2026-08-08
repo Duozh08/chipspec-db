@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { apiList, cloudbaseEnabled } from '../utils/apiClient';
 import { markPendingFilled } from '../utils/pendingStore';
-import { addLocalCatalogItem, saveLocalCatalogFilled } from '../utils/localCatalog';
+import { addLocalCatalogItem, loadLocalCatalog, saveLocalCatalogFilled } from '../utils/localCatalog';
 
 export interface SyncState {
   /** 后端返回的已补全条目数 */
@@ -37,10 +37,17 @@ export function useCollectSync(intervalMs = 2500) {
           // 同时把后端补全的 spec 写回本地条目（含处理器/显卡等硬件参数）
           const hitLocal = saveLocalCatalogFilled(it.name, it.spec, it.filledAt);
           if (!hitLocal && it.spec) {
-            // 后端有补全但本地无条目（如游戏本收录联动自动补录的芯片）→ 创建本地条目并同步 spec
-            const created = await addLocalCatalogItem(it.name, it.category, it.brand);
-            await saveLocalCatalogFilled(it.name, it.spec, it.filledAt);
-            if (created) changed = true;
+            // 后端有补全但本地无条目（如游戏本收录联动自动补录的芯片）→ 创建本地条目并同步 spec。
+            // 注意：addLocalCatalogItem 返回条目对象（恒为真值），不能据此判断是否新建——
+            // 已同步过的条目每轮都会走进此分支，若用返回值当 created 标记，
+            // changed 每轮都为 true →「检测到新的补全结果」提示反复出现/消失。
+            // 改为先查本地是否真实存在，仅当确实不存在（新建）才触发 changed。
+            const exists = loadLocalCatalog().some((x) => x.name.toLowerCase() === it.name.toLowerCase());
+            if (!exists) {
+              await addLocalCatalogItem(it.name, it.category, it.brand);
+              await saveLocalCatalogFilled(it.name, it.spec, it.filledAt);
+              changed = true;
+            }
           }
           if (hitPending || hitLocal) changed = true;
         }
