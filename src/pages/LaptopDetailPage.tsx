@@ -141,31 +141,20 @@ export default function LaptopDetailPage() {
     .sort((a, b) => (b.release ?? '').localeCompare(a.release ?? ''))
     .slice(0, 6);
 
-  // 品牌主色（用于基本规格中处理器/显卡方案的强调显示）
-  const BRAND_COLOR: Record<string, string> = {
-    lenovo: 'text-red-600',
-    asus: 'text-blue-700',
-    hp: 'text-blue-600',
-    dell: 'text-sky-700',
-    acer: 'text-emerald-600',
-    msi: 'text-rose-600',
-    razer: 'text-green-600',
-    colorful: 'text-fuchsia-600',
-    mechrevo: 'text-indigo-600',
-    hasee: 'text-amber-600',
-    xiaomi: 'text-orange-600',
-    honor: 'text-cyan-600',
-    gigabyte: 'text-violet-600',
-    huawei: 'text-red-600',
-    machenike: 'text-teal-600',
-    thunderobot: 'text-sky-600',
-  };
-  const brandColor = BRAND_COLOR[laptop.brand] ?? 'text-blue-600';
+  // 芯片品牌主色（基本规格强调用）：Intel 蓝 / AMD 红 / NVIDIA 绿
+  const CPU_CHIP_COLOR = hasAmd && hasIntel ? 'text-red-600' : hasAmd ? 'text-red-600' : 'text-blue-600';
+  // 显卡品牌：优先查站内芯片库（matchGpu），未命中按型号前缀猜测
+  const firstGpu = allGpuOptions[0];
+  const gpuChip = firstGpu ? matchGpu(firstGpu, 'mobile') ?? matchGpu(firstGpu) : undefined;
+  const GPU_CHIP_COLOR =
+    gpuChip?.brand === 'amd' || (!gpuChip && /^(rx|radeon)/i.test(firstGpu?.trim() ?? ''))
+      ? 'text-red-600'
+      : 'text-green-600';
 
-  // 基本规格：处理器方案 / 显卡方案置顶并强调显示
-  const specs: [string, string, boolean?][] = [
-    ['处理器方案', `${allCpuOptions.length} 种（${allCpuOptions.join(' / ')}）`, true],
-    ['显卡方案', `${allGpuOptions.length} 种（${allGpuOptions.join(' / ')}）`, true],
+  // 基本规格：处理器方案 / 显卡方案置顶并强调显示（按芯片品牌着色）
+  const specs: [string, string, string?][] = [
+    ['处理器方案', `${allCpuOptions.length} 种（${allCpuOptions.join(' / ')}）`, CPU_CHIP_COLOR],
+    ['显卡方案', `${allGpuOptions.length} 种（${allGpuOptions.join(' / ')}）`, GPU_CHIP_COLOR],
     ['品牌', LAPTOP_BRAND_LABELS[laptop.brand]],
     ['系列', laptop.series],
     ['中文名称', laptop.displayName],
@@ -379,15 +368,15 @@ export default function LaptopDetailPage() {
               基本规格
             </div>
             <dl className="divide-y divide-slate-100">
-              {specs.map(([label, value, highlight]) => (
+              {specs.map(([label, value, chipsColor]) => (
                 <div
                   key={label}
                   className={`grid grid-cols-[8.5rem_1fr] gap-4 px-4 py-2.5 text-sm ${
-                    highlight ? 'bg-slate-50/80' : ''
+                    chipsColor ? 'bg-slate-50/80' : ''
                   }`}
                 >
-                  <dt className={`${highlight ? 'font-bold ' + brandColor : 'text-slate-500'}`}>{label}</dt>
-                  <dd className={`${highlight ? 'font-bold ' + brandColor : 'text-slate-800'}`}>{value}</dd>
+                  <dt className={`${chipsColor ? 'font-bold ' + chipsColor : 'text-slate-500'}`}>{label}</dt>
+                  <dd className={`${chipsColor ? 'font-bold ' + chipsColor : 'text-slate-800'}`}>{value}</dd>
                 </div>
               ))}
             </dl>
