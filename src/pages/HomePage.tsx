@@ -5,6 +5,7 @@ import type { Chip } from '../data/types';
 import { allLaptops } from '../data/laptops';
 import { LAPTOP_BRAND_LABELS } from '../data/types';
 import { useRecognize } from '../context/RecognizeContext';
+import NewsTicker from '../components/NewsTicker';
 
 /** 芯片小知识条目 */
 interface KnowledgeItem {
@@ -271,6 +272,9 @@ export default function HomePage() {
             🔧 维修社区
           </span>
         </div>
+
+        {/* 行业快讯轮播（云端 RSS 实时抓取，不可用时降级站内动态） */}
+        <NewsTicker />
       </div>
 
       {/* 自媒体平台（刘大师兄笔记本维修，与下方三大模块同列宽对齐） */}

@@ -52,3 +52,44 @@ export async function apiList(status?: 'pending' | 'filled', limit = 100): Promi
   const json = await call('list', { status, limit });
   return Array.isArray(json.items) ? (json.items as CatalogRecord[]) : [];
 }
+
+/** 首页行业快讯条目（来自 news 云函数抓取的 RSS） */
+export interface NewsItem {
+  title: string;
+  link: string;
+  source: string;
+  pubDate?: string;
+}
+
+/**
+ * 拉取行业新闻（news 云函数：抓取 IT之家/爱范儿/雷峰网 RSS 并过滤硬件相关）。
+ * 网关路由建在 app 域名下（service 域名不映射新路由），失败时尝试备用域名；
+ * 全部失败返回空数组，由调用方降级为站内信息轮播。
+ */
+export async function apiNews(timeoutMs = 10000): Promise<NewsItem[]> {
+  if (!cloudbaseEnabled) return [];
+  const urls = [
+    `https://${CLOUDBASE_ENV_ID}.service.tcloudbase.com/news`,
+    `https://${CLOUDBASE_ENV_ID}-1452185409.ap-shanghai.app.tcloudbase.com/news`,
+  ];
+  for (const url of urls) {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+        signal: ctrl.signal,
+      });
+      clearTimeout(timer);
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.ok === true && Array.isArray(json.items)) {
+        return json.items as NewsItem[];
+      }
+    } catch {
+      /* 尝试下一个域名 */
+    }
+  }
+  return [];
+}

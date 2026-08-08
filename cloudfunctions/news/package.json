@@ -1,0 +1,7 @@
+{
+  "name": "news",
+  "version": "1.0.0",
+  "description": "抓取硬件行业 RSS 新闻（首页轮播）",
+  "main": "index.js",
+  "dependencies": {}
+}
