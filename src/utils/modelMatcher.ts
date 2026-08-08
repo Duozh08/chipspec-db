@@ -99,7 +99,7 @@ export function matchChipsInText(text: string): MatchResult<Chip>[] {
   return results;
 }
 
-/** 判断 a 是否可通过在 target 中跳过不超过 maxSkip 个字符得到，
+/** 判断 a 是否可通过在 target 中跳过不超过 maxSkip 个连续字符得到，
  * 覆盖 OCR 把「天选6」拆成「天 6 选...」导致 token 为 "天6" 时仍能命中 "天选6"。 */
 function isApproxSubsequence(a: string, target: string, maxSkip = 1): boolean {
   if (target.includes(a)) return true;
@@ -120,6 +120,25 @@ function isApproxSubsequence(a: string, target: string, maxSkip = 1): boolean {
   return i === a.length;
 }
 
+/** 把 a 在 target 中按顺序出现的字符位置收集成"窗口"；若 a 的全部字符都出现，
+ * 返回 [start, end]（含两端）；否则返回 null。覆盖 OCR 字符级切分下，
+ * d 的字符以一定间隔散布在文本中也能匹配。 */
+function subsequenceWindow(a: string, target: string): [number, number] | null {
+  let i = 0,
+    j = 0,
+    start = -1,
+    end = -1;
+  while (i < a.length && j < target.length) {
+    if (a[i] === target[j]) {
+      if (start === -1) start = j;
+      end = j;
+      i++;
+    }
+    j++;
+  }
+  return i === a.length ? [start, end] : null;
+}
+
 /** 从 token 中提取"型号核心"（品牌剥离后的 中文/字母+数字 段）：
  * 「华硕天选6游戏本」→ 去品牌 "天选6游戏本" → 提取 "天选6"；
  * 「ASUS天选6」→ 去品牌 "天选6" → 提取 "天选6"。
@@ -138,10 +157,16 @@ export function matchLaptopsInText(text: string): MatchResult<Laptop>[] {
   // 合并 token（"天选"+"6"）也参与匹配，解决 OCR 中文数字带空格问题
   const merged = mergedTokens(tokenize(text)).map((t) => ({ tok: t, stripped: stripBrands(t) }));
   const all = [...tokens, ...merged];
+  // 全文子序列匹配：把 OCR 输出文本去掉所有空白与标点后，
+  // 对每个站内名 d 检查"d 的字符是否按顺序出现在干净文本中且窗口不太大"，
+  // 覆盖 "天选6选哪一个套餐" / "天 选 6 选 哪 一 个 套 餐" 等大量无关字符混在型号里的场景。
+  const cleanText = normModel(text);
   const results: MatchResult<Laptop>[] = [];
+  const matchedIds = new Set<string>();
   for (const laptop of allLaptops) {
     const d = normModel(laptop.displayName);
     if (d.length < 3) continue;
+    let pushed = false;
     for (const { tok, stripped } of all) {
       // 型号特征：含数字或中文（排除 "ultra"/"radeon" 等泛词）
       if (stripped.length < 3) continue;
@@ -152,6 +177,8 @@ export function matchLaptopsInText(text: string): MatchResult<Laptop>[] {
       // 或 token 包含站内名（OCR 输出完整型号串 "rog幻16air2025" 时也能命中）
       if (d.includes(stripped) || stripped.includes(d)) {
         results.push({ item: laptop, matchedText: tok });
+        matchedIds.add(laptop.id);
+        pushed = true;
         break;
       }
       // 型号核心兜底：连写 token（"华硕天选6游戏本"）提取 "天选6" 后命中站内名；
@@ -159,7 +186,23 @@ export function matchLaptopsInText(text: string): MatchResult<Laptop>[] {
       const core = extractModelCore(stripped);
       if (core && core.length >= 2 && core !== stripped && isApproxSubsequence(core, d)) {
         results.push({ item: laptop, matchedText: tok });
+        matchedIds.add(laptop.id);
+        pushed = true;
         break;
+      }
+    }
+    if (pushed) continue;
+    // 全文子序列兜底：d 的所有字符按顺序出现在 cleanText 中，且窗口长度 ≤ d.length * 2 + 2
+    // 覆盖 "天选6选哪一个套餐"、"天 选 6 选 哪 一 个 套 餐" 等
+    if (cleanText.length >= d.length) {
+      const win = subsequenceWindow(d, cleanText);
+      if (win) {
+        const winLen = win[1] - win[0] + 1;
+        // 窗口容忍度：d 长度内允许 d.length 大小的 gap（覆盖 OCR 字符级切分与无关字符干扰）
+        if (winLen <= d.length * 2 + 2) {
+          results.push({ item: laptop, matchedText: cleanText.slice(win[0], win[1] + 1) });
+          matchedIds.add(laptop.id);
+        }
       }
     }
   }
@@ -222,7 +265,11 @@ export function extractUnknownCandidates(text: string, limit = 8): UnknownCandid
   }
 
   // 2) 常规 token 候选：含数字 + 含字母或中文 + 长度 3~20（排除纯数字年份/功耗）
-  //    连写 token（"华硕天选6游戏本"）优先取型号核心（"天选6"）作为候选
+  //    连写 token（"华硕天选6游戏本"）优先取型号核心（"天选6"）作为候选。
+  //    同时跳过"已知匹配"的延伸变体（避免出现「天选6」匹配后还提示「天选6」待收录）。
+  const knownArr = Array.from(known);
+  const isKnownVariant = (name: string) =>
+    known.has(name) || knownArr.some((k) => k.length >= 2 && (name.includes(k) || k.includes(name)));
   const candToks = [...tokens, ...mergedTokens(tokens)];
   for (const tok of candToks) {
     if (known.has(tok)) continue;
@@ -234,6 +281,7 @@ export function extractUnknownCandidates(text: string, limit = 8): UnknownCandid
       const core = extractModelCore(stripped);
       // 长连写 token 有核心时用核心（"华硕天选6游戏本"→"天选6"），否则用原 token
       const name = core && core.length < tok.length && core.length >= 3 ? core : tok;
+      if (isKnownVariant(name)) continue;
       push({ name, type: guessCandidateType(name) });
     }
   }
