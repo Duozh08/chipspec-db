@@ -29,3 +29,10 @@
 - catalog 集合权限 ADMINONLY（仅云函数读写）；云端函数代码=cloudfunctions/ 目录，改后需重新部署（updateFunctionCode）
 - **必坑**：① HTTP 网关调 Event 函数参数在 event.body（JSON 串），需 parseParams 兼容；② spec 字段为 null 时 update 嵌套对象报错，必须 doc.set 全量替换；③ MCP 建函数勿用 type=HTTP（要求 scf_bootstrap），用 Event+网关路由
 - 部署可用 WorkBuddy CloudBase 连接器（MCP mcp__cloudbase__*）直接操作，无需控制台
+
+## OCR tessdata 托管（2026-08-08 起）
+- **tessdata 主源 = CloudBase 静态托管**（`https://duozhu08-tengfei-d1eqlp0bae59452-1452185409.tcloudbaseapp.com/tessdata/`，腾讯云国内 CDN ~7.5MB/s），GitHub Pages 同域副本兜底（22KB/s 太慢，仅兜底）
+- 原因：GitHub Pages 在用户网络下 22KB/s，11MB tessdata 下 8 分钟 → 识别永远加载不完
+- 更新流程：改 public/tessdata → MCP `mcp__cloudbase__manageHosting` action=upload（localPath=public/tessdata, cloudPath=tessdata）→ git push 同步 GitHub Pages 副本
+- ocrEngine.ts：`ensureEngine` 顺序 cloudbase→github；缓存命名空间 `tess-fast-v4`；tesseract.js-core 的 wasm.js 为 SINGLE_FILE（base64 内嵌 wasm，外部 .wasm 用不到）
+- CORS：CloudBase 静态托管回显 Origin + credentials，跨域 worker/importScripts/fetch 全通
