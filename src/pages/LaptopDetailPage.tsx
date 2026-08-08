@@ -6,7 +6,7 @@ import { allChips } from '../data';
 import type { Chip } from '../data/types';
 import { LAPTOP_BRAND_LABELS, cpuPlatform, fmtDieDims } from '../data/types';
 import { useFavorites } from '../hooks/useFavorites';
-import { getLaptopChipAdditions, addLaptopChipAddition, notifyChipAdditionsChanged } from '../utils/laptopChipAdditions';
+import { getLaptopChipAdditions, addLaptopChipAddition, removeLaptopChipAddition, notifyChipAdditionsChanged } from '../utils/laptopChipAdditions';
 import { apiCollect } from '../utils/apiClient';
 import { addLocalCatalogItem } from '../utils/localCatalog';
 import { addPendingItem, guessBrand } from '../utils/pendingStore';
@@ -233,6 +233,13 @@ export default function LaptopDetailPage() {
     }
   };
 
+  /** 删除本地补充的处理器/显卡方案（站内静态方案不可删） */
+  const handleRemoveChip = (type: 'cpu' | 'gpu', name: string) => {
+    removeLaptopChipAddition(laptop.id, type, name);
+    setAdditions(getLaptopChipAdditions(laptop.id));
+    notifyChipAdditionsChanged();
+  };
+
   // 跨页同步：其他标签页提交了补充方案后本页自动刷新
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
@@ -420,6 +427,23 @@ export default function LaptopDetailPage() {
                           <span className="shrink-0 text-xs text-blue-500" aria-hidden>↗</span>
                         </>
                       )}
+                      {isAdd && (
+                        <button
+                          type="button"
+                          title="删除该补充方案"
+                          aria-label={`删除 ${cpu}`}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleRemoveChip('cpu', cpu);
+                          }}
+                          className="shrink-0 rounded-full p-0.5 text-slate-300 transition hover:bg-red-50 hover:text-red-500"
+                        >
+                          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+                            <path d="M4 4l8 8M12 4l-8 8" />
+                          </svg>
+                        </button>
+                      )}
                     </>
                   );
                   return chipInfo ? (
@@ -467,6 +491,23 @@ export default function LaptopDetailPage() {
                           </span>
                           <span className="shrink-0 text-xs text-red-500" aria-hidden>↗</span>
                         </>
+                      )}
+                      {isAdd && (
+                        <button
+                          type="button"
+                          title="删除该补充方案"
+                          aria-label={`删除 ${cpu}`}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleRemoveChip('cpu', cpu);
+                          }}
+                          className="shrink-0 rounded-full p-0.5 text-slate-300 transition hover:bg-red-50 hover:text-red-500"
+                        >
+                          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+                            <path d="M4 4l8 8M12 4l-8 8" />
+                          </svg>
+                        </button>
                       )}
                     </>
                   );
@@ -523,6 +564,23 @@ export default function LaptopDetailPage() {
                       </span>
                       <span className="shrink-0 text-xs text-green-500" aria-hidden>↗</span>
                     </>
+                  )}
+                  {isAdd && (
+                    <button
+                      type="button"
+                      title="删除该补充方案"
+                      aria-label={`删除 ${gpu}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleRemoveChip('gpu', gpu);
+                      }}
+                      className="shrink-0 rounded-full p-0.5 text-slate-300 transition hover:bg-red-50 hover:text-red-500"
+                    >
+                      <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+                        <path d="M4 4l8 8M12 4l-8 8" />
+                      </svg>
+                    </button>
                   )}
                 </div>
               );
