@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { allLaptops, getLaptopById } from '../data/laptops';
 import { stressTests } from '../data/stress-tests';
@@ -64,6 +64,120 @@ function dieDimsSummary(chip: Chip): string {
   return chip.dies.length > 1 ? `${first}（共${chip.dies.length} Die）` : first;
 }
 
+/* ---------- 基本规格一键截图（Canvas 手动绘制，零依赖） ---------- */
+
+/** 把 Tailwind 芯片品牌色类名映射为 Canvas 颜色（Intel 蓝 / AMD 红 / NVIDIA 绿） */
+function mapSpecColor(cls: string | undefined): string {
+  if (!cls) return '';
+  if (cls.includes('red')) return '#dc2626';
+  if (cls.includes('green')) return '#16a34a';
+  if (cls.includes('blue')) return '#2563eb';
+  return '#334155';
+}
+
+/** 按最大宽度逐字换行（中文/字母/数字混排） */
+function wrapCanvasLines(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+  const lines: string[] = [];
+  let cur = '';
+  for (const ch of text) {
+    if (cur && ctx.measureText(cur + ch).width > maxWidth) {
+      lines.push(cur);
+      cur = ch;
+    } else {
+      cur += ch;
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines;
+}
+
+/** 用 Canvas 绘制"基本规格"表格并返回 canvas（2x 高清输出） */
+function drawSpecsCanvas(specs: [string, string, string?][], width = 480): HTMLCanvasElement {
+  const padX = 16;
+  const labelW = 136;
+  const gap = 16;
+  const valueW = width - padX * 2 - labelW - gap;
+  const headerH = 42;
+  const lineH = 22;
+  const rowPad = 20; // 单行时上下各 10px
+  const FONT = '"PingFang SC", "Microsoft YaHei", system-ui, sans-serif';
+
+  // 预测量：计算每行所需高度
+  const probe = document.createElement('canvas').getContext('2d')!;
+  probe.font = `14px ${FONT}`;
+  const rowHeights: number[] = specs.map(([, value]) => {
+    const lines = wrapCanvasLines(probe, value, valueW);
+    return lines.length * lineH + rowPad;
+  });
+  const totalH = headerH + rowHeights.reduce((a, b) => a + b, 0);
+
+  // 2x 高清
+  const canvas = document.createElement('canvas');
+  canvas.width = width * 2;
+  canvas.height = totalH * 2;
+  const ctx = canvas.getContext('2d')!;
+  ctx.scale(2, 2);
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'left';
+
+  // 背景
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, width, totalH);
+
+  // 标题栏
+  ctx.fillStyle = '#f1f5f9';
+  ctx.fillRect(0, 0, width, headerH);
+  ctx.fillStyle = '#334155';
+  ctx.font = `600 14px ${FONT}`;
+  ctx.fillText('基本规格', padX, headerH / 2);
+  ctx.strokeStyle = '#e2e8f0';
+  ctx.beginPath();
+  ctx.moveTo(0, headerH);
+  ctx.lineTo(width, headerH);
+  ctx.stroke();
+
+  // 数据行
+  let y = headerH;
+  specs.forEach(([label, value, chipsColor], i) => {
+    const h = rowHeights[i];
+    const color = mapSpecColor(chipsColor);
+    const isHl = !!chipsColor;
+
+    // 行背景（高亮行浅灰）
+    ctx.fillStyle = isHl ? 'rgba(241,245,249,0.9)' : '#ffffff';
+    ctx.fillRect(0, y, width, h);
+    // 分隔线
+    ctx.strokeStyle = '#e2e8f0';
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(width, y);
+    ctx.stroke();
+
+    // 标签
+    ctx.fillStyle = isHl ? color : '#64748b';
+    ctx.font = isHl ? `700 14px ${FONT}` : `400 14px ${FONT}`;
+    ctx.fillText(label, padX, y + h / 2);
+
+    // 值（多行垂直居中）
+    const lines = wrapCanvasLines(ctx, value, valueW);
+    const startY = y + (h - lines.length * lineH) / 2 + lineH / 2;
+    ctx.fillStyle = isHl ? color : '#1e293b';
+    ctx.font = isHl ? `700 14px ${FONT}` : `500 14px ${FONT}`;
+    lines.forEach((ln, li) => ctx.fillText(ln, padX + labelW + gap, startY + li * lineH));
+
+    y += h;
+  });
+
+  // 底部边框线
+  ctx.strokeStyle = '#e2e8f0';
+  ctx.beginPath();
+  ctx.moveTo(0, y);
+  ctx.lineTo(width, y);
+  ctx.stroke();
+
+  return canvas;
+}
+
 export default function LaptopDetailPage() {
   const { id } = useParams<{ id: string }>();
   const laptop = id ? getLaptopById(id) : undefined;
@@ -92,6 +206,10 @@ export default function LaptopDetailPage() {
   const [chipInput, setChipInput] = useState('');
   const [chipMsg, setChipMsg] = useState<{ kind: 'ok' | 'info' | 'err'; text: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // 基本规格一键截图状态
+  const specsBoxRef = useRef<HTMLDivElement>(null);
+  const [capturing, setCapturing] = useState(false);
+  const [captureMsg, setCaptureMsg] = useState('');
 
   // 合并后的方案（站内静态 + 本地补充，去重）
   const allCpuOptions = [...laptop.cpuOptions, ...additions.cpus.filter((c) => !laptop.cpuOptions.some((x) => x.toLowerCase() === c.toLowerCase()))];
@@ -229,6 +347,43 @@ export default function LaptopDetailPage() {
     notifyChipAdditionsChanged();
   };
 
+  /** 一键生成基本规格截图：用 Canvas 绘制模块内容并下载 PNG */
+  const handleCaptureSpecs = () => {
+    if (capturing) return;
+    setCapturing(true);
+    setCaptureMsg('');
+    try {
+      // 截图宽度跟随模块实际宽度（有值用实际值，否则回退 480）
+      const width = specsBoxRef.current?.offsetWidth && specsBoxRef.current.offsetWidth > 0
+        ? specsBoxRef.current.offsetWidth
+        : 480;
+      const canvas = drawSpecsCanvas(specs, width);
+      canvas.toBlob((blob) => {
+        setCapturing(false);
+        if (!blob) {
+          setCaptureMsg('截图生成失败，请重试');
+          setTimeout(() => setCaptureMsg(''), 4000);
+          return;
+        }
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${laptop.displayName}-基本规格.png`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+        setCaptureMsg(`已生成「${laptop.displayName}」基本规格截图`);
+        setTimeout(() => setCaptureMsg(''), 4000);
+      }, 'image/png');
+    } catch (err) {
+      console.error(err);
+      setCapturing(false);
+      setCaptureMsg('截图生成失败，请重试');
+      setTimeout(() => setCaptureMsg(''), 4000);
+    }
+  };
+
   // 跨页同步：其他标签页提交了补充方案后本页自动刷新
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
@@ -363,10 +518,38 @@ export default function LaptopDetailPage() {
         {/* 右列 */}
         <div className="flex min-w-0 flex-col gap-5">
           {/* 基本规格表 */}
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-            <div className="border-b border-slate-100 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700">
-              基本规格
+          <div ref={specsBoxRef} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-4 py-2.5">
+              <span className="text-sm font-semibold text-slate-700">基本规格</span>
+              <button
+                type="button"
+                onClick={handleCaptureSpecs}
+                disabled={capturing}
+                title="仅截取基本规格模块，保存为 PNG 图片"
+                className="flex shrink-0 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-600 shadow-sm transition hover:border-blue-300 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {capturing ? (
+                  <>
+                    <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 animate-spin" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                      <path d="M8 2a6 6 0 1 0 6 6" />
+                    </svg>
+                    生成中…
+                  </>
+                ) : (
+                  <>
+                    <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="2" y="3.5" width="12" height="9" rx="1.5" />
+                      <circle cx="8" cy="8" r="2.2" />
+                      <path d="M4.6 3.5h2.1l.9-1h1l.9 1h2.9" />
+                    </svg>
+                    一键截图
+                  </>
+                )}
+              </button>
             </div>
+            {captureMsg && (
+              <div className="border-b border-blue-100 bg-blue-50/70 px-4 py-1.5 text-xs text-blue-700">{captureMsg}</div>
+            )}
             <dl className="divide-y divide-slate-100">
               {specs.map(([label, value, chipsColor]) => (
                 <div
