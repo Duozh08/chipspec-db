@@ -26,9 +26,11 @@ export default function RecognizeModal({ onClose }: { onClose: () => void }) {
   /** 已收录的候选名（点击立即收录后显示收录状态） */
   const [collectedNames, setCollectedNames] = useState<Record<string, true>>({});
   const [savedMsg, setSavedMsg] = useState('');
+  const [rematchMsg, setRematchMsg] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pasteRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
+  const textAreaRef = useRef<HTMLTextAreaElement>(null);
 
   // 轮询后端补全状态：发现已补全 → 刷新本地清单（显示 ✓ 已补全）
   const sync = useCollectSync(5000);
@@ -53,6 +55,15 @@ export default function RecognizeModal({ onClose }: { onClose: () => void }) {
     setLaptopHits(laps.filter((l, i) => laps.findIndex((x) => x.id === l.id) === i).slice(0, 10));
     setUnknowns(extractUnknownCandidates(value));
   }, []);
+
+  /** 从 textarea 实时读取文本（避免闭包捕获旧值）并重新匹配 */
+  const handleRematch = useCallback(() => {
+    const v = textAreaRef.current?.value ?? text;
+    setText(v);
+    runMatch(v);
+    setRematchMsg(`已按修改后的文本重新匹配：${v.slice(0, 40)}${v.length > 40 ? '…' : ''}`);
+    setTimeout(() => setRematchMsg(''), 4000);
+  }, [runMatch, text]);
 
   const handleImage = (f: File) => {
     if (!f.type.startsWith('image/')) return;
@@ -309,21 +320,25 @@ export default function RecognizeModal({ onClose }: { onClose: () => void }) {
 
               {/* 识别文本（可编辑） */}
               <div className="rounded-xl border border-slate-200 bg-white">
-                <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
+                <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-3 py-2">
                   <span className="text-xs font-semibold text-slate-600">识别文本（可修正后重新匹配）</span>
                   <button
-                    onClick={() => runMatch(text)}
-                    className="rounded-md border border-slate-300 px-2 py-0.5 text-[11px] text-slate-500 hover:bg-slate-50"
+                    type="button"
+                    onClick={handleRematch}
+                    className="shrink-0 rounded-md border border-blue-300 bg-blue-50 px-2.5 py-1 text-[11px] font-medium text-blue-600 transition hover:bg-blue-100 active:scale-95"
                   >
                     ↻ 重新匹配
                   </button>
                 </div>
                 <textarea
+                  ref={textAreaRef}
                   value={text}
                   onChange={(e) => setText(e.target.value)}
                   rows={3}
                   className="w-full resize-y rounded-b-xl p-3 text-sm outline-none"
+                  placeholder="可在此手动修改识别文本，点击「重新匹配」按新文本查找"
                 />
+                {rematchMsg && <div className="border-t border-slate-100 bg-emerald-50 px-3 py-1.5 text-[11px] text-emerald-700">✅ {rematchMsg}</div>}
               </div>
 
               {/* 匹配到的芯片 */}
