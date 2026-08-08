@@ -1,16 +1,29 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { Link, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import HomePage from './pages/HomePage';
-import BrowsePage from './pages/BrowsePage';
-import DetailPage from './pages/DetailPage';
-import ComparePage from './pages/ComparePage';
-import LaptopListPage from './pages/LaptopListPage';
-import LaptopDetailPage from './pages/LaptopDetailPage';
-import RepairPage from './pages/RepairPage';
 import CompareTray from './components/CompareTray';
 import { useRecognize } from './context/RecognizeContext';
 import { loadPendingItems } from './utils/pendingStore';
 import { useCollectSync } from './hooks/useCollectSync';
+
+// 路由级代码分割：非首页页面按需加载，缩小首屏 bundle
+const BrowsePage = lazy(() => import('./pages/BrowsePage'));
+const DetailPage = lazy(() => import('./pages/DetailPage'));
+const ComparePage = lazy(() => import('./pages/ComparePage'));
+const LaptopListPage = lazy(() => import('./pages/LaptopListPage'));
+const LaptopDetailPage = lazy(() => import('./pages/LaptopDetailPage'));
+const RepairPage = lazy(() => import('./pages/RepairPage'));
+const NewsPage = lazy(() => import('./pages/NewsPage'));
+
+/** 路由懒加载兜底：页面加载中的占位（避免白屏闪烁） */
+function RouteFallback() {
+  return (
+    <div className="flex min-h-[50vh] items-center justify-center text-sm text-slate-400">
+      <span className="mr-2 inline-block h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-blue-500" />
+      加载中…
+    </div>
+  );
+}
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -84,6 +97,14 @@ export default function App() {
               游戏本
             </NavLink>
             <NavLink
+              to="/news"
+              className={({ isActive }) =>
+                `rounded-lg px-3 py-1.5 ${isActive ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`
+              }
+            >
+              资讯
+            </NavLink>
+            <NavLink
               to="/repair"
               className={({ isActive }) =>
                 `rounded-lg px-3 py-1.5 ${isActive ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`
@@ -129,16 +150,19 @@ export default function App() {
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-6 pb-28">
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/browse" element={<BrowsePage />} />
-          <Route path="/chip/:id" element={<DetailPage />} />
-          <Route path="/compare" element={<ComparePage />} />
-          <Route path="/laptops" element={<LaptopListPage />} />
-          <Route path="/laptop/:id" element={<LaptopDetailPage />} />
-          <Route path="/repair" element={<RepairPage />} />
-          <Route path="*" element={<HomePage />} />
-        </Routes>
+        <Suspense fallback={<RouteFallback />}>
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/browse" element={<BrowsePage />} />
+            <Route path="/chip/:id" element={<DetailPage />} />
+            <Route path="/compare" element={<ComparePage />} />
+            <Route path="/laptops" element={<LaptopListPage />} />
+            <Route path="/laptop/:id" element={<LaptopDetailPage />} />
+            <Route path="/news" element={<NewsPage />} />
+            <Route path="/repair" element={<RepairPage />} />
+            <Route path="*" element={<HomePage />} />
+          </Routes>
+        </Suspense>
       </main>
 
       <footer className="border-t border-slate-200 py-5 text-center text-xs leading-5 text-slate-400">

@@ -1,0 +1,25 @@
+{
+  "name": "芯片规格数据库 ChipSpec DB",
+  "short_name": "ChipSpec DB",
+  "description": "CPU/GPU 芯片封装与 Die 尺寸、TDP 功耗、游戏本配置参数查询，截图识别型号，行业资讯与维修社区。",
+  "start_url": "./#/",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2563eb",
+  "lang": "zh-CN",
+  "icons": [
+    {
+      "src": "./icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

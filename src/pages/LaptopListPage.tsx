@@ -30,6 +30,14 @@ const YEAR_OPTIONS: { value: string; label: string }[] = [
   { value: '2020', label: '2020' },
 ];
 
+/** 搜索联想词（常见型号 + 年份连写） */
+const SEARCH_SUGGESTIONS = [
+  '拯救者Y9000P', '拯救者Y7000P', 'y9000p2022', 'y9000p2024', 'y7000p2024',
+  '天选6', '天选5', 'ROG 枪神', '暗影精灵10', '光影精灵', 'OMEN', '泰坦',
+  '游匣', '掠夺者', '战神', '旷世', '蛟龙', '极光', '外星人', 'RTX 5060',
+  'RTX 5070', 'i9-14900HX', 'R9 9955HX',
+];
+
 function getYear(release: string | null): string {
   if (!release) return '';
   const y = release.slice(0, 4);
@@ -173,11 +181,18 @@ export default function LaptopListPage() {
         >
           <input
             type="search"
+            list="laptop-search-suggestions"
             className="w-full min-w-0 flex-1 rounded-l-lg border border-r-0 border-slate-300 bg-white px-2.5 py-2 text-sm text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 [&::-webkit-search-cancel-button]:hidden"
             placeholder="搜索型号 / CPU / GPU…"
             value={pendingQuery}
             onChange={(e) => setPendingQuery(e.target.value)}
           />
+          {/* 搜索联想：热门型号 + 年份连写（点击即搜） */}
+          <datalist id="laptop-search-suggestions">
+            {SEARCH_SUGGESTIONS.map((s) => (
+              <option key={s} value={s} />
+            ))}
+          </datalist>
           <button
             type="submit"
             className="shrink-0 rounded-r-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 active:bg-blue-800"

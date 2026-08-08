@@ -217,6 +217,43 @@ function formatNumber(n: number): string {
   return String(n);
 }
 
+/** 从帖子 HTML 中提取第一张图片的文件 ID（社区列表缩略图用） */
+function firstImageFileId(html: string): string | null {
+  const m = html.match(/<img[^>]*data-file-id="([^"]+)"/);
+  return m ? m[1] : null;
+}
+
+/** 帖子列表缩略图：从 IndexedDB 加载首图（无图返回 null） */
+function PostThumb({ post }: { post: Post }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const fileId = firstImageFileId(post.content);
+
+  useEffect(() => {
+    if (!fileId) return;
+    let alive = true;
+    getFile(fileId)
+      .then((rec) => {
+        if (alive && rec) setUrl(URL.createObjectURL(rec.blob));
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+      if (url) URL.revokeObjectURL(url);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fileId]);
+
+  if (!fileId || !url) return null;
+  return (
+    <img
+      src={url}
+      alt="帖子配图"
+      className="h-16 w-24 shrink-0 rounded-lg border border-slate-200 object-cover"
+      loading="lazy"
+    />
+  );
+}
+
 export default function RepairPage() {
   const [posts, setPosts] = useState<Post[]>(loadPosts);
   const [announcements, setAnnouncements] = useState<string[]>(loadAnnouncements);
@@ -450,32 +487,35 @@ export default function RepairPage() {
                     className="cursor-pointer rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-blue-300 hover:shadow"
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600">
-                            {post.category}
-                          </span>
-                          {post.pinned && (
-                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
-                              📌 置顶
+                      <div className="flex min-w-0 flex-1 items-start gap-3">
+                        <PostThumb post={post} />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600">
+                              {post.category}
                             </span>
-                          )}
-                          {post.essence && (
-                            <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700">
-                              ✦ 精华
-                            </span>
-                          )}
-                          {post.solved && (
-                            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
-                              ✓ 已解决
-                            </span>
-                          )}
-                          <h3 className="font-semibold text-slate-800 hover:text-blue-600">{post.title}</h3>
-                        </div>
-                        <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400">
-                          <span>👤 {post.author}</span>
-                          <span>🕐 {formatTime(lastReply?.createdAt ?? post.createdAt)}</span>
-                          {post.replies.length > 0 && <span className="text-slate-500">最后回复：{lastReply?.author}</span>}
+                            {post.pinned && (
+                              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                                📌 置顶
+                              </span>
+                            )}
+                            {post.essence && (
+                              <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700">
+                                ✦ 精华
+                              </span>
+                            )}
+                            {post.solved && (
+                              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                                ✓ 已解决
+                              </span>
+                            )}
+                            <h3 className="font-semibold text-slate-800 hover:text-blue-600">{post.title}</h3>
+                          </div>
+                          <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400">
+                            <span>👤 {post.author}</span>
+                            <span>🕐 {formatTime(lastReply?.createdAt ?? post.createdAt)}</span>
+                            {post.replies.length > 0 && <span className="text-slate-500">最后回复：{lastReply?.author}</span>}
+                          </div>
                         </div>
                       </div>
                       <div className="flex shrink-0 flex-col items-end gap-1 text-xs text-slate-400">

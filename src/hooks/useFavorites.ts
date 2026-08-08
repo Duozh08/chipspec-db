@@ -1,6 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { apiFavoritesGet, apiFavoritesSet, cloudbaseEnabled } from '../utils/apiClient';
 
 const STORAGE_KEY = 'chipspec-favorites';
+const DEVICE_KEY = 'chipspec-device-id';
+/** 云端写入防抖间隔（ms） */
+const SYNC_DEBOUNCE_MS = 800;
 
 function readStore(): Record<string, true> {
   try {
@@ -19,25 +23,86 @@ function writeStore(data: Record<string, true>) {
   }
 }
 
-/** 全局收藏（关注）hook，芯片和游戏本共用同一个 localStorage key */
+/** 设备 ID（localStorage 持久化；首次生成随机 UUID） */
+function getDeviceId(): string {
+  try {
+    let id = localStorage.getItem(DEVICE_KEY);
+    if (!id) {
+      id = `dev-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+      localStorage.setItem(DEVICE_KEY, id);
+    }
+    return id;
+  } catch {
+    return 'dev-unknown';
+  }
+}
+
+/** 全局收藏（关注）hook，芯片和游戏本共用同一个 localStorage key；CloudBase 可用时自动云端同步 */
 export function useFavorites() {
   const [favs, setFavs] = useState<Record<string, true>>(readStore);
+  const deviceIdRef = useRef<string>(getDeviceId());
+  const syncTimerRef = useRef<number | null>(null);
+  const syncedRef = useRef(false);
 
+  // 首次挂载：从云端拉取收藏并合并到本地（本地优先，云端补充）
   useEffect(() => {
-    const handler = () => setFavs(readStore());
-    window.addEventListener('storage', handler);
-    return () => window.removeEventListener('storage', handler);
+    if (!cloudbaseEnabled) return;
+    let alive = true;
+    apiFavoritesGet(deviceIdRef.current)
+      .then((cloudIds) => {
+        if (!alive || cloudIds.length === 0) return;
+        setFavs((prev) => {
+          const next = { ...prev };
+          let changed = false;
+          for (const id of cloudIds) {
+            if (!next[id]) {
+              next[id] = true;
+              changed = true;
+            }
+          }
+          if (changed) writeStore(next);
+          return next;
+        });
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        syncedRef.current = true;
+      });
+    return () => {
+      alive = false;
+    };
   }, []);
 
-  const toggle = useCallback((id: string) => {
-    setFavs((prev) => {
-      const next = { ...prev };
-      if (next[id]) delete next[id];
-      else next[id] = true;
-      writeStore(next);
-      return next;
-    });
+  // 卸载前立即同步一次（防抖定时器可能未触发）
+  useEffect(() => {
+    return () => {
+      if (syncTimerRef.current !== null) window.clearTimeout(syncTimerRef.current);
+    };
   }, []);
+
+  /** 防抖写云端 */
+  const scheduleCloudSync = useCallback(() => {
+    if (!cloudbaseEnabled) return;
+    if (syncTimerRef.current !== null) window.clearTimeout(syncTimerRef.current);
+    syncTimerRef.current = window.setTimeout(() => {
+      const ids = Object.keys(readStore());
+      apiFavoritesSet(deviceIdRef.current, ids).catch(() => undefined);
+    }, SYNC_DEBOUNCE_MS);
+  }, []);
+
+  const toggle = useCallback(
+    (id: string) => {
+      setFavs((prev) => {
+        const next = { ...prev };
+        if (next[id]) delete next[id];
+        else next[id] = true;
+        writeStore(next);
+        return next;
+      });
+      scheduleCloudSync();
+    },
+    [scheduleCloudSync]
+  );
 
   const has = useCallback((id: string) => !!favs[id], [favs]);
 

@@ -1,0 +1,9 @@
+{
+  "name": "favorites",
+  "version": "1.0.0",
+  "description": "收藏云端同步（按设备 ID）",
+  "main": "index.js",
+  "dependencies": {
+    "@cloudbase/node-sdk": "^3.2.1"
+  }
+}

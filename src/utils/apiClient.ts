@@ -128,3 +128,59 @@ export async function apiOcr(imageBase64: string, timeoutMs = 20000): Promise<st
   }
   throw lastErr instanceof Error ? lastErr : new Error('OCR 调用失败');
 }
+
+/** 收藏云同步：拉取云端收藏 id 列表（设备维度） */
+export async function apiFavoritesGet(deviceId: string, timeoutMs = 8000): Promise<string[]> {
+  if (!cloudbaseEnabled) return [];
+  const urls = [
+    `https://${CLOUDBASE_ENV_ID}.service.tcloudbase.com/favorites`,
+    `https://${CLOUDBASE_ENV_ID}-1452185409.ap-shanghai.app.tcloudbase.com/favorites`,
+  ];
+  for (const url of urls) {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'get', deviceId }),
+        signal: ctrl.signal,
+      });
+      clearTimeout(timer);
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.ok === true && Array.isArray(json.ids)) {
+        return (json.ids as unknown[]).filter((x): x is string => typeof x === 'string');
+      }
+    } catch {
+      /* 下一个域名 */
+    }
+  }
+  return [];
+}
+
+/** 收藏云同步：把当前收藏列表整体写入云端（设备维度） */
+export async function apiFavoritesSet(deviceId: string, ids: string[], timeoutMs = 8000): Promise<boolean> {
+  if (!cloudbaseEnabled) return false;
+  const urls = [
+    `https://${CLOUDBASE_ENV_ID}.service.tcloudbase.com/favorites`,
+    `https://${CLOUDBASE_ENV_ID}-1452185409.ap-shanghai.app.tcloudbase.com/favorites`,
+  ];
+  for (const url of urls) {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'set', deviceId, ids }),
+        signal: ctrl.signal,
+      });
+      clearTimeout(timer);
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.ok === true) return true;
+    } catch {
+      /* 下一个域名 */
+    }
+  }
+  return false;
+}
