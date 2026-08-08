@@ -100,7 +100,9 @@ export default function LaptopListPage() {
         // 基础字段 + 年份化别名（"y9000p2022" → 拯救者Y9000P 2022款）
         const base = `${l.brand} ${l.displayName} ${l.series} ${l.model} ${l.cpuOptions.join(' ')} ${l.gpuOptions.join(' ')}`.toLowerCase();
         const aliases = laptopSearchKeywords(l).join(' ');
-        if (!base.includes(q) && !aliases.includes(q)) return false;
+        // 归一化 q（去空格/符号）："y9000p 2022" → "y9000p2022" 也能命中对应年份款
+        const qNorm = q.replace(/[^a-z0-9\u4e00-\u9fff]+/g, '');
+        if (!base.includes(q) && !aliases.includes(q) && (!qNorm || !aliases.includes(qNorm))) return false;
       }
       return true;
     });

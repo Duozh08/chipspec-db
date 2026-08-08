@@ -15,10 +15,16 @@ export interface MatchResult<T> {
   matchedText: string;
 }
 
-/** 中文品牌前缀（laptop 匹配时剥离，如"惠普暗影精灵10" → "暗影精灵10"） */
+/** 中文品牌/系列前缀（laptop 匹配时剥离，如"惠普暗影精灵10" → "暗影精灵10"） */
 const BRANDS_CN = [
+  // 品牌
   '联想', '华硕', '惠普', '戴尔', '微星', '宏碁', '神舟', '雷神', '机械师',
   '机械革命', '七彩虹', '外星人', '雷蛇', '华为', '小米', '荣耀', '技嘉', '玩家国度',
+  // 系列（让 y7000p / 天选6 等 bare 别名能生成）
+  '拯救者', '天选', '暗影精灵', '光影精灵', '游匣', '灵越', '战神', '优雅', '精盾',
+  '泰坦', '雷影', '神影', '掠夺者', '暗影骑士', '极光', '旷世', '蛟龙', '翼龙', '耀世',
+  '隐星', '将星', '曙光', '星辰', '创物者', '猎人', 'RedmiG', '灵耀', '无畏', '飞行堡垒',
+  '小新', '昭阳', '扬天', 'MateBook', 'MagicBook',
 ];
 
 /** 英文品牌前缀（laptop 匹配时剥离，如 "ASUS天选6" → "天选6"） */
@@ -30,6 +36,9 @@ function stripBrands(tok: string): string {
   for (const b of BRANDS_EN) {
     if (s.startsWith(b)) s = s.slice(b.length);
   }
+  // 回退：剥完为空或只剩短纯数字（"旷世" → ""，"旷世2022" → "2022"），
+  // 说明该前缀本身就是要找的型号（displayName 就是系列名），保留原 token。
+  if (!s || /^\d{1,4}$/.test(s)) return tok;
   return s;
 }
 
@@ -107,6 +116,17 @@ export function matchChipsInText(text: string, extraChips: Chip[] = []): MatchRe
   return results;
 }
 
+/** 判断 s 中是否包含 k 作为一个"完整词"：k 出现位置之后不能紧跟字母或数字。
+ * 避免 "y7000p" 因包含 "y7000" 而命中 Y7000（无 P 后缀）等子串误匹配。 */
+function containsWord(s: string, k: string): boolean {
+  let idx = s.indexOf(k);
+  while (idx !== -1) {
+    const after = s[idx + k.length];
+    if (!after || !/[a-z0-9]/.test(after)) return true;
+    idx = s.indexOf(k, idx + 1);
+  }
+  return false;
+}
 /** 判断 a 是否可通过在 target 中跳过不超过 maxSkip 个连续字符得到，
  * 覆盖 OCR 把「天选6」拆成「天 6 选...」导致 token 为 "天6" 时仍能命中 "天选6"。 */
 function isApproxSubsequence(a: string, target: string, maxSkip = 1): boolean {
@@ -149,19 +169,32 @@ function subsequenceWindow(a: string, target: string): [number, number] | null {
 
 /** 从 token 中提取"型号核心"（品牌剥离后的 中文/字母+数字 段）：
  * 「华硕天选6游戏本」→ 去品牌 "天选6游戏本" → 提取 "天选6"；
- * 「ASUS天选6」→ 去品牌 "天选6" → 提取 "天选6"。
- * 用于 OCR 无空格连写（品牌+型号+泛词）时仍能命中站内名。 */
+ * 「ASUS天选6」→ 去品牌 "天选6" → 提取 "天选6"；
+ * 「y7000p适合哪个」→ 提取 "y7000p"。
+ * 用于 OCR 无空格连写（品牌/系列+型号+泛词）时仍能命中站内名。 */
 function extractModelCore(raw: string): string {
   // 先剥离末尾年份：「型号+年份」连写（"战神z82025" → "战神z8"），
   // 否则 \d 贪婪会把 z8+2025 连读，把整个 token 当 core（core===stripped 被跳过）。
   const stripped = raw.replace(/20\d{2}$/, '');
-  // 中文/字母段 + 数字段（数字前最多 6 个中文或字母，数字后跟字母）；
-  // 数字段限 1~4 位，避免吞掉后续数字
-  const m = stripped.match(/^([\u4e00-\u9fff a-z]{1,6}\d{1,4}[a-z]*)/);
-  if (m && /\d/.test(m[1]) && /[\u4e00-\u9fff]/.test(m[1])) return m[1];
-  // 兜底：数字前至少 1 个中文，避免纯数字/纯字母
-  const m2 = stripped.match(/([\u4e00-\u9fff]{1,6}\d{1,4}[a-z]*)/);
-  return m2 && /\d/.test(m2[1]) ? m2[1] : '';
+
+  // 1) 中文/字母段 + 数字段（数字前最多 6 个中文或字母，数字后跟字母）；
+  //    数字段限 1~4 位，避免吞掉后续数字
+  const m1 = stripped.match(/^([\u4e00-\u9fff a-z]{1,6}\d{1,4}[a-z]*)/i);
+  if (m1 && /\d/.test(m1[1]) && /[\u4e00-\u9fff]/.test(m1[1])) return m1[1];
+
+  // 2) 纯英文型号：字母 + 数字 + 可选字母（"y7000p" / "y9000p" / "omen16"）
+  const m2 = stripped.match(/^([a-z]+\d{1,4}[a-z]*)/i);
+  if (m2 && /\d/.test(m2[1])) return m2[1].toLowerCase();
+
+  // 3) 数字开头型号：数字 + 字母（"500se" / "16studio" / "5plus"，如 掠夺者刀锋500SE）
+  const m3 = stripped.match(/^(\d{1,4}[a-z]{1,8})/i);
+  if (m3 && m3[1]) return m3[1].toLowerCase();
+
+  // 4) 兜底：token 中任意位置出现的中文+数字+字母（"适合天选6" → "天选6"）
+  const m4 = stripped.match(/([\u4e00-\u9fff]{1,6}\d{1,4}[a-z]*)/);
+  if (m4 && /\d/.test(m4[1])) return m4[1];
+
+  return '';
 }
 
 /**
@@ -232,6 +265,19 @@ export function matchLaptopsInText(text: string, extraLaptops: Laptop[] = []): M
         // 5 位以上纯数字（"162025"）放行——可精确匹配 model 别名尾段（OMEN 16-2025 → omen162025）
         if (/^\d+$/.test(stripped) && stripped.length <= 4) continue;
 
+        // 【完整型号匹配】token 归一化后等于 displayName / model / id（或其品牌剥离形式）：
+        // "omen17ck2000" → OMEN 17-ck2000、"16irx9" → 拯救者Y7000P 16IRX9 等。
+        // 必须在年份逻辑之前：避免 "omen17ck2000" 的 "2000" 被误判为年份（base="omen17ck"
+        // 命中 series"omen" → baseHit=true → 年份不符被 continue 跳过，整条无法命中）。
+        const modelNorm = normModel(laptop.model);
+        const idNorm = normModel(laptop.id);
+        if (isModelish && (stripped === d || stripped === modelNorm || stripped === idNorm)) {
+          results.push({ item: laptop, matchedText: tok });
+          matchedIds.add(laptop.id);
+          pushed = true;
+          break;
+        }
+
         // 【年份精确匹配】token 以 20xx（或 20xx款）结尾：
         // 型号部分命中 + release 年份必须等于 token 年份，否则不命中。
         // 避免 "拯救者y9000p2022" 命中所有年份的 Y9000P 款。
@@ -244,7 +290,7 @@ export function matchLaptopsInText(text: string, extraLaptops: Laptop[] = []): M
           const baseHit =
             (isModelish && (d.includes(base) || base.includes(d))) ||
             (core && core.length >= 2 && isApproxSubsequence(core, d)) ||
-            laptopSearchKeywords(laptop).some((k) => base.includes(k) || k.includes(base));
+            laptopSearchKeywords(laptop).some((k) => base.includes(k) || (k.length >= 3 && containsWord(base, k)) || k.includes(base));
           if (baseHit) {
             if (laptop.release?.slice(0, 4) === year) {
               results.push({ item: laptop, matchedText: tok });
@@ -282,8 +328,10 @@ export function matchLaptopsInText(text: string, extraLaptops: Laptop[] = []): M
         // 否则 "天选6" 因包含 series"天选"而命中所有天选系列款。
         const kws = laptopSearchKeywords(laptop);
         const hitKw = isModelish
-          ? kws.find((k) => (k.length >= 3 && stripped.includes(k)) || k.includes(stripped))
-          : kws.find((k) => k.startsWith(stripped));
+          ? kws.find((k) => (k.length >= 3 && containsWord(stripped, k)) || k.includes(stripped))
+          : stripped.length >= 3
+            ? kws.find((k) => k.startsWith(stripped))
+            : undefined;
         if (hitKw) {
           results.push({ item: laptop, matchedText: tok });
           matchedIds.add(laptop.id);
@@ -292,6 +340,14 @@ export function matchLaptopsInText(text: string, extraLaptops: Laptop[] = []): M
         }
       }
       if (pushed) continue;
+      // 连续包含兜底：cleanText 中直接包含 d 的完整连续子串（"旷世游戏本" 含 "旷世"）。
+      // 2 字短名（"G5"/"G7"）也适用：连续包含是强信号，
+      // "G7" 不会误命中 "泰坦GT77"（gt77 中 g7 不连续）。
+      if (d.length >= 2 && d.length <= 8 && cleanText.includes(d)) {
+        results.push({ item: laptop, matchedText: d });
+        matchedIds.add(laptop.id);
+        continue;
+      }
       // 全文子序列兜底：d 的所有字符按顺序出现在 cleanText 中，且窗口长度 ≤ d.length * 2 + 2
       // 覆盖 "天选6选哪一个套餐"、"天 选 6 选 哪 一 个 套 餐" 等
       // d 长度 ≥3：避免 2 字短名（"G5"/"G7"）在任意含 g7 的文本中误命中
