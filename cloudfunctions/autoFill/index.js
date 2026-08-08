@@ -29,6 +29,18 @@ exports.main = async (event) => {
     return { ok: false, error: 'deepseek call failed', id };
   }
 
+  // 补全质量验证：关键硬件参数缺失视为补全失败（保留 pending，前端继续显示"补全中"并可重试）
+  const missing = specCompleteness(spec, category);
+  if (missing.length > 0) {
+    return {
+      ok: false,
+      error: `补全结果缺少关键参数: ${missing.join(', ')}`,
+      id,
+      incomplete: true,
+      spec,
+    };
+  }
+
   // 原 spec 字段为 null，嵌套 update 会被展开成 spec.brand 导致报错；
   // 改用 set 全量替换文档，保留 createdAt。
   const cur = await db.collection('catalog').doc(id).get();
@@ -45,6 +57,21 @@ exports.main = async (event) => {
   });
   return { ok: true, id, spec };
 };
+
+/** 补全质量验证：返回缺失的关键字段名数组（空数组 = 补全完整）。
+ *  游戏本必须有处理器/显卡方案；芯片必须有 TDP/制程等核心规格。 */
+function specCompleteness(spec, category) {
+  const missing = [];
+  if (!spec || typeof spec !== 'object') return ['spec'];
+  if (category === 'laptop') {
+    if (!Array.isArray(spec.cpuOptions) || spec.cpuOptions.length === 0) missing.push('cpuOptions(处理器方案)');
+    if (!Array.isArray(spec.gpuOptions) || spec.gpuOptions.length === 0) missing.push('gpuOptions(显卡方案)');
+  } else {
+    if (spec.tdp == null) missing.push('tdp');
+    if (!spec.process) missing.push('process(制程)');
+  }
+  return missing;
+}
 
 async function fillWithDeepSeek(name, category) {
   const prompt = buildPrompt(name, category);
@@ -119,6 +146,7 @@ function buildPrompt(name, category) {
 
   if (category === 'laptop') {
     return `${base}
+重要：cpuOptions / gpuOptions 是核心字段。绝大多数在售游戏本都有明确的处理器与显卡配置（如 "i9-14900HX"、"RTX 4060 (140W)"、"锐龙7 H 260"），请基于公开资料如实填写该机型实际可选用的型号，不要留空；仅当确认该型号不存在时才填 null/[]。
 输出以下 JSON 结构（游戏本）：
 {
   "brand": "lenovo|asus|hp|dell|msi|acer|mechrevo|hasee|razer|colorful|thunderobot|machenike|gigabyte|huawei|xiaomi|honor 等小写品牌名",
@@ -136,6 +164,7 @@ function buildPrompt(name, category) {
 }`;
   }
   return `${base}
+重要：tdp / process / codename 是核心字段。绝大多数已发布芯片都有公开的 TDP 与制程信息（如 TSMC 4N、Intel 7），请基于公开资料如实填写，不要留空；仅当确认该型号不存在时才用 null。
 输出以下 JSON 结构（芯片）：
 {
   "brand": "intel|amd|nvidia 小写",
