@@ -119,17 +119,23 @@ export default function RecognizeModal({ onClose }: { onClose: () => void }) {
         );
       });
       const runOcr = (async () => {
+        // 识别引擎本地化：core / worker / 语言包均从站内同源加载（public/tessdata），
+        // 不再依赖国外 CDN（tessdata.projectnaptha.com / jsdelivr），避免国内网络下载卡住
+        const tessBase = `${import.meta.env.BASE_URL}tessdata/`;
         worker = await Tesseract.createWorker(['chi_sim', 'eng'], 1, {
+          langPath: tessBase,
+          corePath: `${tessBase}tesseract-core-simd.wasm.js`,
+          workerPath: `${tessBase}worker.min.js`,
           logger: (m: { status: string; progress: number }) => {
             if (m.status === 'loading tesseract core') {
               setPhase('loading');
-              setStatusText(`下载识别引擎… ${Math.round(m.progress * 100)}%`);
+              setStatusText(`加载识别引擎… ${Math.round(m.progress * 100)}%`);
             } else if (m.status === 'initializing tesseract') {
               setPhase('loading');
               setStatusText('初始化识别引擎…');
             } else if (m.status === 'loading language traineddata') {
               setPhase('downloading');
-              setStatusText('下载中文语言包（约 12MB）… 首次使用需下载，之后自动缓存');
+              setStatusText('加载中文/英文语言模型… 首次使用约需 30MB，之后自动缓存');
               setProgress(Math.round(m.progress * 100));
             } else if (m.status === 'recognizing text') {
               setPhase('recognizing');
