@@ -25,6 +25,8 @@ interface LayoutResult {
   pkgW: number; // mm（垂直）
   pkgKnown: boolean;
   rects: DieRect[];
+  /** 无任何 Die 数据（如 AI 收录待补全的芯片）→ 渲染占位主体 */
+  empty?: boolean;
 }
 
 /** 单个 Die 的物理尺寸（mm）。只有面积时按正方形近似。 */
@@ -82,6 +84,10 @@ function placeDies(chip: Chip, sizes: { l: number; w: number }[], innerW: number
 }
 
 function layoutChip(chip: Chip): LayoutResult {
+  // 无 Die 数据（AI 收录待补全）→ 固定尺寸占位主体，避免空数组导致 Infinity 画布空白
+  if (chip.dies.length === 0) {
+    return { pkgL: 20, pkgW: 20, pkgKnown: false, rects: [], empty: true };
+  }
   const sizes = chip.dies.map(dieSizeMm);
   const pkg = chip.package;
   const pkgKnown = pkg.lengthMm != null && pkg.widthMm != null;
@@ -154,7 +160,7 @@ const UNIFIED_VB_H = 56 + 40 * 10 + 42; // padT + 40*S + padB
 export default function ChipDiagram({ chip, variant = 'full', scale, unified = false, className }: ChipDiagramProps) {
   const rawId = useId().replace(/[:]/g, '');
   const S = scale ?? (variant === 'full' ? 10 : 3.2);
-  const { pkgL, pkgW, pkgKnown, rects } = layoutChip(chip);
+  const { pkgL, pkgW, pkgKnown, rects, empty } = layoutChip(chip);
   /** 保留 1 位小数（整数不带小数点），用于尺寸标注 */
   const t1 = (v: number): string => {
     const r = Math.round(v * 10) / 10;
@@ -241,6 +247,33 @@ export default function ChipDiagram({ chip, variant = 'full', scale, unified = f
       {/* BGA：内圈焊球阵列示意 */}
       {style === 'bga' && pkgKnown && (
         <rect x={px + 5} y={py + 5} width={pw - 10} height={ph - 10} fill="none" stroke="#2c5d47" strokeWidth={2} strokeDasharray="3 4" />
+      )}
+
+      {/* ===== 无 Die 数据占位（AI 收录待补全芯片） ===== */}
+      {empty && (
+        <g>
+          <rect
+            x={px + pw * 0.2}
+            y={py + ph * 0.24}
+            width={pw * 0.6}
+            height={ph * 0.52}
+            rx={4}
+            fill="#e2e8f0"
+            stroke="#94a3b8"
+            strokeWidth={1.2}
+            strokeDasharray="6 4"
+          />
+          <text
+            x={px + pw / 2}
+            y={py + ph / 2}
+            textAnchor="middle"
+            fontSize={isMini ? 8 : 12}
+            fill="#64748b"
+            fontWeight={500}
+          >
+            {isMini ? '暂无 Die' : '暂无 Die 数据（AI 收录待补全）'}
+          </text>
+        </g>
       )}
 
       {/* ===== Die 层 ===== */}

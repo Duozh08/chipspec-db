@@ -77,22 +77,6 @@ function mapSpecColor(cls: string | undefined): string {
   return '#334155';
 }
 
-/** 按最大宽度逐字换行（中文/字母/数字混排） */
-function wrapCanvasLines(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
-  const lines: string[] = [];
-  let cur = '';
-  for (const ch of text) {
-    if (cur && ctx.measureText(cur + ch).width > maxWidth) {
-      lines.push(cur);
-      cur = ch;
-    } else {
-      cur += ch;
-    }
-  }
-  if (cur) lines.push(cur);
-  return lines;
-}
-
 /** 用 Canvas 绘制"基本规格"表格并返回 canvas（2x 高清输出）。
  *  宽度自适应：以内容最长一行的渲染宽度确定边界（不折叠该行内容），左右边距对称。 */
 function drawSpecsCanvas(specs: [string, string, string?][]): HTMLCanvasElement {
@@ -110,7 +94,8 @@ function drawSpecsCanvas(specs: [string, string, string?][]): HTMLCanvasElement 
   const labelWs = specs.map(([label]) => probe.measureText(label).width);
   const labelW = Math.max(...labelWs) + labelExtra;
   const valueRawWs = specs.map(([, value]) => probe.measureText(value).width);
-  const valueW = Math.max(...valueRawWs);
+  // value 列宽 = 最长单行宽度 + 缓冲（避免逐字测量误差把末位字符如右括号挤到下一行）
+  const valueW = Math.max(...valueRawWs) + 4;
   const contentW = labelW + gap + valueW;
   // 总宽 = 内容宽 + 左右对称边距；标题「基本规格」不窄于内容时以标题为准
   const W = Math.max(padX * 2 + contentW, probe.measureText('基本规格').width + padX * 2);
@@ -166,12 +151,10 @@ function drawSpecsCanvas(specs: [string, string, string?][]): HTMLCanvasElement 
     ctx.font = isHl ? `700 14px ${FONT}` : `400 14px ${FONT}`;
     ctx.fillText(label, padX, y + h / 2);
 
-    // 值（多行垂直居中）
-    const lines = wrapCanvasLines(ctx, value, valueW);
-    const startY = y + (h - lines.length * lineH) / 2 + lineH / 2;
+    // 值（单行绘制，不换行不折叠；宽度已按最长行计算并预留缓冲）
     ctx.fillStyle = isHl ? color : '#1e293b';
     ctx.font = isHl ? `700 14px ${FONT}` : `500 14px ${FONT}`;
-    lines.forEach((ln, li) => ctx.fillText(ln, padX + labelW + gap, startY + li * lineH));
+    ctx.fillText(value, padX + labelW + gap, y + h / 2);
 
     y += h;
   });
