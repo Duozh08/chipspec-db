@@ -5,6 +5,7 @@ import ChipDiagram from '../components/ChipDiagram';
 import { SPEC_ROWS } from '../components/SpecTable';
 import { DataQualityBadge } from '../components/DiagramLegend';
 import { useCompare } from '../context/CompareContext';
+import { loadLocalChips } from '../utils/localCatalog';
 
 const COMPARE_SCALE = 8; // 所有示意图共享同一比例尺（1mm = 8px）
 
@@ -12,7 +13,11 @@ export default function ComparePage() {
   const [searchParams] = useSearchParams();
   const { remove } = useCompare();
   const ids = (searchParams.get('ids') ?? '').split(',').filter(Boolean);
-  const chips = ids.map((id) => getChipById(id)).filter((c): c is Chip => c != null);
+  // 站内静态库 + 本地 AI 收录库（本地芯片也能加入对比）
+  const localChips = loadLocalChips();
+  const chips = ids
+    .map((id) => getChipById(id) ?? localChips.find((c) => c.id === id))
+    .filter((c): c is Chip => c != null);
 
   if (chips.length < 2) {
     return (

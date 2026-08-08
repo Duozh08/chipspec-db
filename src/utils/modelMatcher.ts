@@ -328,8 +328,9 @@ export function extractUnknownCandidates(
     // 排除配置/杂项词（容量/频率/功耗/价格/尺寸等，不构成型号）
     if (/^\d+\s*(gb|tb|g|hz|w|wifi|核|英寸|寸|mm|kg|k|m|mp)\s*$/i.test(tok)) continue;
     if (/^[\d¥$￥.,%()\-+]+$/.test(tok)) continue;
-    // 排除半截芯片词（无编号的厂商词，如单独 rtx/core/锐龙/酷睿）
-    if (/^(rtx|gtx|rx|core|i[3579]$|r[57]$|ryzen|酷睿|锐龙|ultra|geforce|radeon|arc)\d*$/i.test(tok)) continue;
+    // 排除半截芯片词（无编号的厂商词，如单独 rtx/core/锐龙/酷睿；
+    // 以及中文/英文词 + 0~2 位短编号的半截型号，如 OCR 拆开的"锐龙7"、"core9"，避免出现在待收录列表）
+    if (/^(rtx|gtx|rx|core|i[3579]|r[57]|ryzen|酷睿|锐龙|ultra|geforce|radeon|arc)\d{0,2}$/i.test(tok)) continue;
     // 排除常见泛词（电脑/配置类）
     if (/^(gaming|laptop|notebook|笔记本|游戏本|电脑|处理器|显卡|屏幕|内存|硬盘|电池|重量|型号|配置)$/i.test(tok)) continue;
     if (/\d/.test(tok) && /[a-z\u4e00-\u9fff]/.test(tok) && tok.length >= 3 && tok.length <= 20) {

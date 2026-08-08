@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { ReactNode } from 'react';
 import { getChipById } from '../data';
 import type { Chip } from '../data/types';
+import { loadLocalChips } from '../utils/localCatalog';
 
 const MAX_COMPARE = 4;
 const STORAGE_KEY = 'chipspec-compare';
@@ -18,13 +19,18 @@ interface CompareContextValue {
 
 const CompareContext = createContext<CompareContextValue | null>(null);
 
+/** 按 id 查找芯片：站内静态库 + 本地 AI 收录库 */
+function findChipById(id: string): Chip | undefined {
+  return getChipById(id) ?? loadLocalChips().find((c) => c.id === id);
+}
+
 function loadInitial(): string[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter((x): x is string => typeof x === 'string').filter((id) => getChipById(id) != null).slice(0, MAX_COMPARE);
+    return parsed.filter((x): x is string => typeof x === 'string').filter((id) => findChipById(id) != null).slice(0, MAX_COMPARE);
   } catch {
     return [];
   }
@@ -53,7 +59,7 @@ export function CompareProvider({ children }: { children: ReactNode }) {
   const value = useMemo<CompareContextValue>(
     () => ({
       ids,
-      chips: ids.map((id) => getChipById(id)).filter((c): c is Chip => c != null),
+      chips: ids.map(findChipById).filter((c): c is Chip => c != null),
       add,
       remove,
       clear,
