@@ -18,8 +18,8 @@ export interface SyncState {
   syncedAt: number | null;
 }
 
-/** 每 N 秒轮询一次后端收录状态 */
-export function useCollectSync(intervalMs = 5000) {
+/** 每 N 秒轮询一次后端收录状态（默认 2.5s，配合前端主动快轮询实现最快补全闭环） */
+export function useCollectSync(intervalMs = 2500) {
   const [state, setState] = useState<SyncState>({ filledCount: 0, changed: false, syncedAt: null });
   const timerRef = useRef<number | null>(null);
 

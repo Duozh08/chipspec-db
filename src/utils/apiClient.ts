@@ -10,25 +10,30 @@ const CLOUDBASE_ENV_ID = 'duozhu08-tengfei-d1eqlp0bae59452';
 
 export const cloudbaseEnabled = CLOUDBASE_ENV_ID.length > 0;
 
-function call(name: string, data: Record<string, unknown>) {
+function call(name: string, data: Record<string, unknown>, timeoutMs = 30000) {
   if (!cloudbaseEnabled) throw new Error('CloudBase 未配置');
   const url = `https://${CLOUDBASE_ENV_ID}.service.tcloudbase.com/${name}`;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   return fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
-  }).then(async (res) => {
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok || json.ok === false) {
-      throw new Error(json.error || `API ${name} failed`);
-    }
-    return json;
-  });
+    signal: ctrl.signal,
+  })
+    .then(async (res) => {
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json.ok === false) {
+        throw new Error(json.error || `API ${name} failed`);
+      }
+      return json;
+    })
+    .finally(() => clearTimeout(timer));
 }
 
 /** 提交收录（后端自动 AI 补全）；未配置后端时抛错由调用方降级本地 */
 export function apiCollect(name: string, category: 'chip' | 'laptop', brand: string) {
-  return call('collect', { name, category, brand });
+  return call('collect', { name, category, brand }, 15000);
 }
 
 /** 查询后端收录/补全结果（供前端轮询显示已补全状态） */

@@ -233,17 +233,17 @@ export default function LaptopListPage() {
 
                 {/* 右侧内容区 */}
                 <div className="flex min-w-0 flex-1 flex-col p-3">
-                  {/* 左上角：名称型号（有烤机数据的机型显示火焰图标） */}
+                  {/* 左上角：名称型号（AI 收录标识在标题右侧水平对齐；有烤机数据机型显示火焰图标） */}
                   <div className="pr-5">
-                    <div className="flex items-start gap-1">
+                    <div className="flex items-center gap-1">
+                      <h3 className="min-w-0 flex-1 truncate text-sm font-semibold leading-tight text-slate-800 group-hover:text-blue-600">
+                        {title}
+                      </h3>
                       {isLocal && (
-                        <span className="mt-0.5 shrink-0 rounded bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-600">
+                        <span className="shrink-0 rounded bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-600">
                           AI 收录
                         </span>
                       )}
-                      <h3 className="min-w-0 flex-1 text-sm font-semibold leading-tight text-slate-800 group-hover:text-blue-600">
-                        {title}
-                      </h3>
                       {hasStress && (
                         <span
                           className="mt-0.5 shrink-0"

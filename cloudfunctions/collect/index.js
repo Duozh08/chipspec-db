@@ -35,15 +35,14 @@ exports.main = async (event) => {
     createdAt: Date.now(),
   });
 
-  // 异步触发 AI 补全（不阻塞响应）
-  try {
-    await app.callFunction({
+  // 异步触发 AI 补全（fire-and-forget，不阻塞响应，collect 秒回；
+  // 补全结果由前端主动快轮询拉取，实现最快的"收录→补全→显示"闭环）
+  app
+    .callFunction({
       name: 'autoFill',
       data: { id: addRes.id, name, category, brand },
-    });
-  } catch (err) {
-    console.error('trigger autoFill failed', err);
-  }
+    })
+    .catch((err) => console.error('trigger autoFill failed', err));
 
   return { ok: true, id: addRes.id };
 };

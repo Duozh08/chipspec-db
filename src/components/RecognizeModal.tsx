@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { BRAND_LABELS, LAPTOP_BRAND_LABELS } from '../data/types';
 import { addPendingItem, exportPendingItems, guessBrand, loadPendingItems, removePendingItem } from '../utils/pendingStore';
 import type { PendingItem } from '../utils/pendingStore';
-import { addLocalCatalogItem } from '../utils/localCatalog';
-import { apiCollect } from '../utils/apiClient';
+import { addLocalCatalogItem, saveLocalCatalogFilled } from '../utils/localCatalog';
+import { apiCollect, apiList } from '../utils/apiClient';
 import { matchChipsInText, matchLaptopsInText, extractUnknownCandidates } from '../utils/modelMatcher';
 import type { UnknownCandidate } from '../utils/modelMatcher';
 import { useCollectSync } from '../hooks/useCollectSync';
@@ -33,7 +33,7 @@ export default function RecognizeModal({ onClose }: { onClose: () => void }) {
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
 
   // 轮询后端补全状态：发现已补全 → 刷新本地清单（显示 ✓ 已补全）
-  const sync = useCollectSync(5000);
+  const sync = useCollectSync(2500);
   useEffect(() => {
     setPendingItems(loadPendingItems());
     if (sync.changed) {
@@ -195,6 +195,26 @@ export default function RecognizeModal({ onClose }: { onClose: () => void }) {
         : `已收录「${cand.name}」（本地模式），已自动获取信息并按站内格式生成，列表显示 New 标记（24 小时）`
     );
     setTimeout(() => setSavedMsg(''), 8000);
+
+    // 主动快速跟踪补全（最快路径）：每 2s 查一次后端，命中已补全 + 完整规格后立即写回本地，
+    // 列表/详情马上显示处理器/显卡等详细数据，无需等全局 2.5s 轮询（useCollectSync）
+    if (backend) {
+      const name = cand.name;
+      for (let i = 0; i < 25; i++) {
+        await new Promise((r) => setTimeout(r, 2000));
+        try {
+          const items = await apiList('filled');
+          const hit = items.find((it) => it.name.toLowerCase() === name.toLowerCase());
+          if (hit?.spec) {
+            await saveLocalCatalogFilled(name, hit.spec, hit.filledAt);
+            setPendingItems(loadPendingItems());
+            break;
+          }
+        } catch {
+          /* 后端瞬断时跳过，等下一轮 */
+        }
+      }
+    }
   };
 
   const goTo = (to: string) => {

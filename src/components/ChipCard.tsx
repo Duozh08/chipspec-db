@@ -81,11 +81,6 @@ export default function ChipCard({ chip, isAiCollected = false }: { chip: Chip; 
       <div className="flex min-w-0 flex-1 flex-col p-3">
         {/* 顶部：品牌 + 形态 */}
         <div className="flex flex-wrap items-center gap-1.5">
-          {isAiCollected && (
-            <span className="rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-600">
-              AI 收录
-            </span>
-          )}
           <span className={`rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${BRAND_STYLES[chip.brand]}`}>
             {BRAND_LABELS[chip.brand]}
           </span>
@@ -95,11 +90,16 @@ export default function ChipCard({ chip, isAiCollected = false }: { chip: Chip; 
           <span className="truncate text-[10px] text-slate-400">{chip.generation}</span>
         </div>
 
-        {/* 名称（有 Die 尺寸数据时右侧显示芯片图标） */}
+        {/* 名称（AI 收录标识在型号右侧，水平对齐；有 Die 尺寸数据时右侧显示芯片图标） */}
         <div className="mt-1 flex items-center gap-1.5">
           <span className="min-w-0 flex-1 truncate text-sm font-semibold leading-5 text-slate-800 group-hover:text-blue-600">
             {chip.model}
           </span>
+          {isAiCollected && (
+            <span className="shrink-0 rounded bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-600">
+              AI 收录
+            </span>
+          )}
           {hasDieDims && <ChipDimsBadge />}
         </div>
         <div className="truncate text-[11px] text-slate-500">{chip.codename}</div>
