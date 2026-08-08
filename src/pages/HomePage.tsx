@@ -4,7 +4,6 @@ import { allChips } from '../data';
 import type { Chip } from '../data/types';
 import { allLaptops } from '../data/laptops';
 import { LAPTOP_BRAND_LABELS } from '../data/types';
-import { useRecognize } from '../context/RecognizeContext';
 import NewsTicker from '../components/NewsTicker';
 
 /** 芯片小知识条目 */
@@ -195,7 +194,6 @@ function ChipBadge({ chip }: { chip: Chip }) {
 }
 
 export default function HomePage() {
-  const { open: openRecognize } = useRecognize();
   const knowledgeRef = useRef<HTMLDivElement>(null);
   const [selectedKnowledge, setSelectedKnowledge] = useState<KnowledgeItem | null>(null);
   // 数据统计（全部来自站内数据，真实可靠）
@@ -216,65 +214,101 @@ export default function HomePage() {
 
   return (
     <div className="space-y-8">
-      {/* Hero */}
-      <div className="rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-700 p-8 text-white shadow-lg sm:p-12">
-        <div className="flex flex-wrap items-start justify-between gap-6">
-          <div className="min-w-0 flex-1">
-            <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">ChipSpec DB</h1>
-            <p className="mt-3 max-w-2xl text-base text-blue-100 sm:text-lg">
-              芯片规格数据库 — 收录 Intel、AMD、NVIDIA 消费级处理器与显卡的封装尺寸、芯片本体（Die）尺寸、TDP 功耗等详细规格，主流品牌游戏本配置参数查询，以及维修经验交流社区。
-            </p>
+      {/* Hero：深色科技风 */}
+      <div className="relative overflow-hidden rounded-3xl bg-slate-950 p-8 text-white shadow-2xl sm:p-12">
+        {/* 背景层：深蓝渐变 + 网格 + 霓虹光晕 */}
+        <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-950" />
+        <div
+          className="absolute inset-0 opacity-[0.06]"
+          style={{
+            backgroundImage:
+              'linear-gradient(rgba(255,255,255,.4) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.4) 1px, transparent 1px)',
+            backgroundSize: '36px 36px',
+          }}
+        />
+        <div className="pointer-events-none absolute -left-24 -top-24 h-80 w-80 rounded-full bg-blue-500/25 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-32 -right-20 h-96 w-96 rounded-full bg-indigo-500/25 blur-3xl" />
+
+        <div className="relative">
+          {/* 顶部状态标签（独立于左右布局，保证搜索框与标题水平对齐） */}
+          <div className="flex items-center gap-2 text-[11px] font-medium tracking-wide text-blue-300/90">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
+            芯片规格数据库 · ChipSpec DB · 数据持续更新中
           </div>
 
-          {/* 必应中文搜索 */}
-          <form
-            action="https://cn.bing.com/search"
-            method="get"
-            target="_blank"
-            rel="noreferrer"
-            className="w-full max-w-sm shrink-0 rounded-2xl bg-white/10 p-3.5 shadow-inner backdrop-blur"
-          >
-            <div className="flex items-center gap-1.5 text-xs font-medium text-blue-100">
-              <span className="text-sm">🔍</span> 必应中文搜索
+          <div className="mt-6 flex flex-wrap items-start justify-between gap-8">
+            <div className="min-w-0 max-w-2xl flex-1">
+              <h1 className="text-4xl font-black leading-tight tracking-tight sm:text-5xl">
+                芯片规格
+                <span className="bg-gradient-to-r from-sky-400 via-cyan-400 to-violet-400 bg-clip-text text-transparent">
+                  一查便知
+                </span>
+              </h1>
+              <p className="mt-4 text-base leading-7 text-slate-300 sm:text-lg">
+                Intel · AMD · NVIDIA 消费级处理器与显卡的
+                <span className="font-semibold text-white">封装尺寸、Die 拓扑、TDP 功耗</span>
+                ，主流品牌游戏本配置参数查询，截图识别秒匹配，维修经验社区。
+              </p>
+              {/* 特性标签 */}
+              <div className="mt-5 flex flex-wrap gap-2">
+                {['📐 封装 / Die 尺寸', '⚡ TDP 功耗', '🎮 345 款游戏本', '📷 截图识别'].map((t) => (
+                  <span
+                    key={t}
+                    className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-slate-200 backdrop-blur"
+                  >
+                    {t}
+                  </span>
+                ))}
+              </div>
             </div>
-            <div className="mt-2 flex overflow-hidden rounded-lg bg-white shadow-sm">
-              <input
-                name="q"
-                type="search"
-                placeholder="搜索芯片 / 技术资料 / 行业资讯…"
-                className="min-w-0 flex-1 px-3 py-2 text-sm text-slate-800 outline-none placeholder:text-slate-400"
-              />
-              <button
-                type="submit"
-                className="shrink-0 bg-sky-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-600 active:bg-sky-700"
-              >
-                搜索
-              </button>
-            </div>
-            <p className="mt-1.5 text-[11px] text-blue-200/70">在新窗口打开 cn.bing.com 搜索结果</p>
-          </form>
-        </div>
-        <div className="mt-6 flex flex-wrap gap-4 text-sm">
-          <span className="rounded-full bg-white/15 px-3 py-1 backdrop-blur">
-            📊 {allChips.length} 颗芯片
-          </span>
-          <span className="rounded-full bg-white/15 px-3 py-1 backdrop-blur">
-            🎮 {allLaptops.length} 款游戏本
-          </span>
-          <button
-            type="button"
-            onClick={openRecognize}
-            className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-3.5 py-1 font-medium text-white backdrop-blur transition hover:bg-white/30"
-          >
-            📷 截图识别型号 →
-          </button>
-          <span className="rounded-full bg-white/15 px-3 py-1 backdrop-blur">
-            🔧 维修社区
-          </span>
-        </div>
 
-        {/* 行业快讯轮播（云端 RSS 实时抓取，不可用时降级站内动态） */}
-        <NewsTicker />
+            {/* 必应中文搜索（纯白搜索框，与左侧标题垂直居中对齐） */}
+            <form
+              action="https://cn.bing.com/search"
+              method="get"
+              target="_blank"
+              rel="noreferrer"
+              className="w-full max-w-sm shrink-0 sm:mt-2.5"
+            >
+              <div className="flex overflow-hidden rounded-xl bg-white shadow-lg">
+                <input
+                  name="q"
+                  type="search"
+                  placeholder="搜索芯片 / 技术资料 / 行业资讯…"
+                  className="min-w-0 flex-1 px-3.5 py-2.5 text-sm text-slate-800 outline-none placeholder:text-slate-400"
+                />
+                <button
+                  type="submit"
+                  className="shrink-0 bg-gradient-to-r from-sky-500 to-blue-600 px-5 py-2.5 text-sm font-medium text-white transition hover:from-sky-400 hover:to-blue-500 active:brightness-95"
+                >
+                  搜索
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {/* 数据统计（深色玻璃卡） */}
+          <div className="mt-7 grid max-w-2xl grid-cols-2 gap-3 sm:grid-cols-3">
+            <div className="rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5 backdrop-blur transition hover:bg-white/10">
+              <div className="text-lg font-bold leading-tight">{allChips.length}</div>
+              <div className="mt-0.5 text-[11px] text-blue-200/70">颗芯片收录</div>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5 backdrop-blur transition hover:bg-white/10">
+              <div className="text-lg font-bold leading-tight">{allLaptops.length}</div>
+              <div className="mt-0.5 text-[11px] text-blue-200/70">款游戏本配置</div>
+            </div>
+            <Link
+              to="/repair"
+              className="group rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5 text-left backdrop-blur transition hover:bg-white/10"
+            >
+              <div className="text-lg font-bold leading-tight">🔧 维修社区</div>
+              <div className="mt-0.5 text-[11px] text-blue-200/70 group-hover:text-white">经验交流与技术分享 →</div>
+            </Link>
+          </div>
+
+          {/* 行业快讯轮播（云端 RSS 实时抓取，不可用时降级站内动态） */}
+          <NewsTicker />
+        </div>
       </div>
 
       {/* 自媒体平台（刘大师兄笔记本维修，与下方三大模块同列宽对齐） */}
