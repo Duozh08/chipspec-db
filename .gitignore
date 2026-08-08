@@ -3,3 +3,5 @@ dist/
 .vite/
 *.local
 .DS_Store
+# tsc 增量缓存
+.tsbuild/
