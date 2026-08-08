@@ -26,12 +26,30 @@ function stripBrands(tok: string): string {
   return s;
 }
 
-/** 把文本按标点/空格切成 token（保留中文，如 拯救者Y9000P） */
+/** 把文本按标点/空格切成 token（保留中文，如 拯救者Y9000P）。
+ * 注意：只过滤空串，不按长度丢弃——「天选 6」会被切成 ["天选","6"]，
+ * 短 token（如 2 字中文）保留给后续相邻合并/匹配使用。 */
 function tokenize(text: string): string[] {
   return text
     .split(/[\s,，。;；:：|/\\()[\]{}<>《》'"“”·•、]+/)
     .map((t) => normModel(t))
-    .filter((t) => t.length >= 3);
+    .filter((t) => t.length > 0);
+}
+
+/** 相邻 token 合并候选：中文/字母段 + 数字段（"天选"+"6"→"天选6"、"rtx"+"5060"→"rtx5060"）
+ * 或 数字段 + 字母段（"5060"+"laptop"→"5060laptop"）。要求合并结果含中文，避免英文噪音。 */
+function mergedTokens(tokens: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < tokens.length - 1; i++) {
+    const a = tokens[i];
+    const b = tokens[i + 1];
+    const comb = a + b;
+    const goodPair =
+      (/[\u4e00-\u9fff a-z]$/.test(a) && /^\d/.test(b)) || // 天选+6 / rtx+5060
+      (/\d$/.test(a) && /^[a-z\u4e00-\u9fff]/.test(b)); // 5060+laptop / 幻16+Air
+    if (goodPair && /[\u4e00-\u9fff]/.test(comb)) out.push(comb);
+  }
+  return out;
 }
 
 export function matchChipsInText(text: string): MatchResult<Chip>[] {
@@ -69,11 +87,14 @@ export function matchChipsInText(text: string): MatchResult<Chip>[] {
 
 export function matchLaptopsInText(text: string): MatchResult<Laptop>[] {
   const tokens = tokenize(text).map((t) => ({ tok: t, stripped: stripBrands(t) }));
+  // 合并 token（"天选"+"6"）也参与匹配，解决 OCR 中文数字带空格问题
+  const merged = mergedTokens(tokenize(text)).map((t) => ({ tok: t, stripped: stripBrands(t) }));
+  const all = [...tokens, ...merged];
   const results: MatchResult<Laptop>[] = [];
   for (const laptop of allLaptops) {
     const d = normModel(laptop.displayName);
     if (d.length < 4) continue;
-    for (const { tok, stripped } of tokens) {
+    for (const { tok, stripped } of all) {
       // 型号特征：含数字或中文（排除 "ultra"/"radeon" 等泛词）
       if (stripped.length < 3) continue;
       if (!(/\d/.test(stripped) || /[\u4e00-\u9fff]/.test(stripped))) continue;
@@ -146,7 +167,8 @@ export function extractUnknownCandidates(text: string, limit = 8): UnknownCandid
   }
 
   // 2) 常规 token 候选：含数字 + 含字母或中文 + 长度 3~20（排除纯数字年份/功耗）
-  for (const tok of tokens) {
+  const candToks = [...tokens, ...mergedTokens(tokens)];
+  for (const tok of candToks) {
     if (known.has(tok)) continue;
     if (/^20\d{2}$/.test(tok)) continue;
     if (/\d/.test(tok) && /[a-z\u4e00-\u9fff]/.test(tok) && tok.length >= 3 && tok.length <= 20) {
