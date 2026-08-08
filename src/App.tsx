@@ -21,7 +21,7 @@ function ScrollToTop() {
 }
 
 export default function App() {
-  const { open: openRecognize } = useRecognize();
+  const { open: openRecognize, openPending } = useRecognize();
   const [pendingCount, setPendingCount] = useState(loadPendingItems().length);
   const [filledCount, setFilledCount] = useState(0);
   // 轮询后端补全状态（已补全的从"待收录"中移出，展示为绿色已补全）
@@ -102,8 +102,8 @@ export default function App() {
             {filledCount > 0 && (
               <button
                 type="button"
-                onClick={openRecognize}
-                title="已补全的收录条目，点击查看"
+                onClick={openPending}
+                title="已补全的收录条目，点击查看明细"
                 className="ml-1 flex items-center gap-1 rounded-full bg-emerald-500 px-2.5 py-1 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-600"
               >
                 ✓ 已补全 {filledCount}
@@ -113,8 +113,8 @@ export default function App() {
             {pendingCount > 0 && (
               <button
                 type="button"
-                onClick={openRecognize}
-                title="有待收录的型号，点击查看"
+                onClick={openPending}
+                title="有待收录的型号，点击查看明细"
                 className="relative ml-1 flex items-center gap-1 rounded-full bg-red-500 px-2.5 py-1 text-xs font-semibold text-white shadow-sm transition hover:bg-red-600"
               >
                 <span className="absolute -right-1 -top-1 flex h-2.5 w-2.5">
