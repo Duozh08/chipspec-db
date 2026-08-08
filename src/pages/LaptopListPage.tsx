@@ -7,6 +7,8 @@ import type { LaptopBrand } from '../data/types';
 import ScrollTopButton from '../components/ScrollTopButton';
 import NewCatalogSection from '../components/NewCatalogSection';
 import { sortByYearThenFavorites, isFavorited } from '../hooks/useFavorites';
+import { useLocalCatalogItems } from '../hooks/useLocalCatalogItems';
+import { localItemToLaptop, isLocalId } from '../utils/localCatalog';
 
 const BRAND_OPTIONS: { value: LaptopBrand | ''; label: string }[] = [
   { value: '', label: '全部品牌' },
@@ -75,9 +77,19 @@ export default function LaptopListPage() {
   const [pendingYear, setPendingYear] = useState(urlYear);
   const [pendingQuery, setPendingQuery] = useState(urlQuery);
 
+  // 本地 AI 收录游戏本：同步并入正常列表（release=收录日期 → 排序最前）
+  const localItems = useLocalCatalogItems('laptop');
+  const localLaptops = useMemo(() => localItems.map(localItemToLaptop), [localItems]);
+
   const filtered = useMemo(() => {
     const q = urlQuery.trim().toLowerCase();
-    const result = allLaptops.filter((l) => {
+    const seen = new Set<string>();
+    const merged = [...localLaptops, ...allLaptops].filter((l) => {
+      if (seen.has(l.id)) return false;
+      seen.add(l.id);
+      return true;
+    });
+    const result = merged.filter((l) => {
       if (urlBrand && l.brand !== urlBrand) return false;
       if (urlYear) {
         const y = getYear(l.release);
@@ -91,7 +103,7 @@ export default function LaptopListPage() {
     });
     // 按发布年份由近到远排序，关注项置顶
     return sortByYearThenFavorites(result);
-  }, [urlBrand, urlYear, urlQuery]);
+  }, [urlBrand, urlYear, urlQuery, localLaptops]);
 
   const apply = () => {
     const next = new URLSearchParams();
@@ -190,6 +202,7 @@ export default function LaptopListPage() {
             const cpuLabel = getCpuPlatformLabel(laptop.cpuOptions);
             const inFav = isFavorited(laptop.id);
             const hasStress = !!stressTests[laptop.id];
+            const isLocal = isLocalId(laptop.id);
             return (
               <Link
                 key={laptop.id}
@@ -223,6 +236,11 @@ export default function LaptopListPage() {
                   {/* 左上角：名称型号（有烤机数据的机型显示火焰图标） */}
                   <div className="pr-5">
                     <div className="flex items-start gap-1">
+                      {isLocal && (
+                        <span className="mt-0.5 shrink-0 rounded bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-600">
+                          AI 收录
+                        </span>
+                      )}
                       <h3 className="min-w-0 flex-1 text-sm font-semibold leading-tight text-slate-800 group-hover:text-blue-600">
                         {title}
                       </h3>

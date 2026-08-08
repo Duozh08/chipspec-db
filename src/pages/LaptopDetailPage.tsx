@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { allLaptops, getLaptopById } from '../data/laptops';
 import { stressTests } from '../data/stress-tests';
@@ -8,7 +8,7 @@ import { LAPTOP_BRAND_LABELS, cpuPlatform, fmtDieDims } from '../data/types';
 import { useFavorites } from '../hooks/useFavorites';
 import { getLaptopChipAdditions, addLaptopChipAddition, removeLaptopChipAddition, notifyChipAdditionsChanged } from '../utils/laptopChipAdditions';
 import { apiCollect } from '../utils/apiClient';
-import { addLocalCatalogItem } from '../utils/localCatalog';
+import { addLocalCatalogItem, loadLocalCatalog, localItemToLaptop } from '../utils/localCatalog';
 import { addPendingItem, guessBrand } from '../utils/pendingStore';
 
 /** 从显卡方案字符串解析功耗，如 "RTX 4060 (140W)" → "140W" */
@@ -180,7 +180,14 @@ function drawSpecsCanvas(specs: [string, string, string?][], width = 480): HTMLC
 
 export default function LaptopDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const laptop = id ? getLaptopById(id) : undefined;
+  // 优先站内游戏本库，其次本地 AI 收录条目
+  const laptop = useMemo(() => {
+    if (!id) return undefined;
+    const inSite = getLaptopById(id);
+    if (inSite) return inSite;
+    const local = loadLocalCatalog().find((i) => i.id === id && i.category === 'laptop');
+    return local ? localItemToLaptop(local) : undefined;
+  }, [id]);
   const navigate = useNavigate();
   const { has: hasFav, toggle: toggleFav } = useFavorites();
 

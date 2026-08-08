@@ -34,7 +34,7 @@ function ChipDimsBadge() {
   );
 }
 
-export default function ChipCard({ chip }: { chip: Chip }) {
+export default function ChipCard({ chip, isAiCollected = false }: { chip: Chip; isAiCollected?: boolean }) {
   const { add, remove, has, isFull } = useCompare();
   const { has: hasFav } = useFavorites();
   const inCompare = has(chip.id);
@@ -81,6 +81,11 @@ export default function ChipCard({ chip }: { chip: Chip }) {
       <div className="flex min-w-0 flex-1 flex-col p-3">
         {/* 顶部：品牌 + 形态 */}
         <div className="flex flex-wrap items-center gap-1.5">
+          {isAiCollected && (
+            <span className="rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-600">
+              AI 收录
+            </span>
+          )}
           <span className={`rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${BRAND_STYLES[chip.brand]}`}>
             {BRAND_LABELS[chip.brand]}
           </span>

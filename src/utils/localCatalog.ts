@@ -6,6 +6,10 @@
  * AI 深度补全（Die 尺寸/TDP 等）通过导出清单管道在数据更新时合并。
  */
 
+import type { Brand, Chip } from '../data/types';
+import type { Laptop, LaptopBrand } from '../data/types';
+import { guessBrand } from './pendingStore';
+
 const KEY = 'chipspec-local-catalog';
 /** New 标记存活时长：24 小时 */
 export const NEW_BADGE_MS = 24 * 60 * 60 * 1000;
@@ -40,6 +44,8 @@ export function loadLocalCatalog(): LocalCatalogItem[] {
 function save(items: LocalCatalogItem[]) {
   try {
     localStorage.setItem(KEY, JSON.stringify(items));
+    // 同标签页内组件即时刷新（storage 事件只在跨标签页时触发）
+    window.dispatchEvent(new Event('chipspec-local-catalog'));
   } catch {
     /* ignore */
   }
@@ -128,4 +134,96 @@ export function localCatalogToRequests(): { name: string; category: 'chip' | 'la
     brand: i.brand,
     note: `自动收录 ${i.status === 'filled' ? '（已补全）' : '（AI 补全中）'}`,
   }));
+}
+
+/* ================================================================
+ * 本地条目 → 站内数据视图（供列表页合并显示、详情页访问）
+ * 规格字段缺失置空/null，release 用收录日期（保证新收录排最前）
+ * ================================================================ */
+
+/** 猜测 AI 收录芯片的类别（含显卡关键词 → gpu，否则 cpu） */
+export function guessChipCategory(name: string): 'cpu' | 'gpu' {
+  const s = name.toLowerCase();
+  if (/rtx|gtx|rx\s?\d{3,}|geforce|radeon|udna|arc\s?b?\d{3}/.test(s)) return 'gpu';
+  return 'cpu';
+}
+
+function guessChipBrand(name: string): Brand {
+  const n = name.toLowerCase();
+  if (/intel|酷睿|core|ultra|arc/i.test(n)) return 'intel';
+  if (/amd|锐龙|ryzen|radeon/i.test(n)) return 'amd';
+  if (/nvidia|rtx|gtx|geforce|ti\b/i.test(n)) return 'nvidia';
+  return 'intel';
+}
+
+const LAPTOP_BRAND_KEYS: LaptopBrand[] = [
+  'lenovo', 'asus', 'hp', 'dell', 'acer', 'msi', 'razer', 'colorful',
+  'mechrevo', 'hasee', 'xiaomi', 'honor', 'gigabyte', 'huawei', 'machenike', 'thunderobot',
+];
+
+function toLaptopBrand(item: LocalCatalogItem): LaptopBrand {
+  if (LAPTOP_BRAND_KEYS.includes(item.brand as LaptopBrand)) return item.brand as LaptopBrand;
+  const gb = guessBrand(item.name);
+  if (LAPTOP_BRAND_KEYS.includes(gb as LaptopBrand)) return gb as LaptopBrand;
+  return 'lenovo';
+}
+
+/** 本地收录条目 → 芯片视图对象 */
+export function localItemToChip(item: LocalCatalogItem): Chip {
+  const brand = item.brand === 'intel' || item.brand === 'amd' || item.brand === 'nvidia'
+    ? (item.brand as Brand)
+    : guessChipBrand(item.name);
+  return {
+    id: item.id,
+    brand,
+    category: guessChipCategory(item.name),
+    formFactor: 'mobile',
+    model: item.name,
+    codename: 'AI 自动收录',
+    generation: '',
+    process: '',
+    release: item.createdAt.slice(0, 10),
+    package: { type: '', style: 'bga', lengthMm: null, widthMm: null },
+    dies: [],
+    transistorsMillions: null,
+    notes: item.desc ? `AI 自动收录（${item.status === 'filled' ? '已补全' : 'AI 补全中'}）· ${item.desc}` : `AI 自动收录（${item.status === 'filled' ? '已补全' : 'AI 补全中'}）`,
+    tdp: null,
+    loadTempRange: null,
+    dataQuality: 'estimated',
+    sources: [],
+  };
+}
+
+/** 本地收录条目 → 游戏本视图对象 */
+export function localItemToLaptop(item: LocalCatalogItem): Laptop {
+  return {
+    id: item.id,
+    brand: toLaptopBrand(item),
+    series: '',
+    displayName: item.name,
+    model: item.name,
+    release: item.createdAt.slice(0, 10),
+    cpuOptions: [],
+    gpuOptions: [],
+    ram: '',
+    storage: '',
+    display: '',
+    weightKg: null,
+    sources: [],
+  };
+}
+
+/** 本地收录芯片（转成站内 Chip 视图） */
+export function loadLocalChips(): Chip[] {
+  return loadLocalCatalog().filter((i) => i.category === 'chip').map(localItemToChip);
+}
+
+/** 本地收录游戏本（转成站内 Laptop 视图） */
+export function loadLocalLaptops(): Laptop[] {
+  return loadLocalCatalog().filter((i) => i.category === 'laptop').map(localItemToLaptop);
+}
+
+/** 判断条目是否为本地 AI 收录（id 前缀 local-） */
+export function isLocalId(id: string): boolean {
+  return id.startsWith('local-');
 }

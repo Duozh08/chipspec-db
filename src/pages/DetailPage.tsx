@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { getChipById, allChips } from '../data';
 import { BRAND_LABELS, CATEGORY_LABELS, FORM_FACTOR_LABELS, fmtArea, totalDieArea, fmtTdp } from '../data/types';
@@ -6,10 +7,18 @@ import SpecTable from '../components/SpecTable';
 import { DataQualityBadge, DiagramLegend, DieBreakdown } from '../components/DiagramLegend';
 import { useCompare } from '../context/CompareContext';
 import { useFavorites } from '../hooks/useFavorites';
+import { loadLocalCatalog, localItemToChip } from '../utils/localCatalog';
 
 export default function DetailPage() {
   const { id } = useParams<{ id: string }>();
-  const chip = id ? getChipById(id) : undefined;
+  // 优先站内芯片库，其次本地 AI 收录条目
+  const chip = useMemo(() => {
+    if (!id) return undefined;
+    const inSite = getChipById(id);
+    if (inSite) return inSite;
+    const local = loadLocalCatalog().find((i) => i.id === id && i.category === 'chip');
+    return local ? localItemToChip(local) : undefined;
+  }, [id]);
   const { add, remove, has, isFull } = useCompare();
   const { has: hasFav, toggle: toggleFav } = useFavorites();
   const navigate = useNavigate();

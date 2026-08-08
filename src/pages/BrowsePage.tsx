@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import ChipCard from '../components/ChipCard';
 import FilterBar, { parseBrand, parseCategory, parseFormFactor } from '../components/FilterBar';
@@ -5,6 +6,8 @@ import ScrollTopButton from '../components/ScrollTopButton';
 import NewCatalogSection from '../components/NewCatalogSection';
 import { useChipFilters } from '../hooks/useChipFilters';
 import { sortByYearThenFavorites } from '../hooks/useFavorites';
+import { useLocalCatalogItems } from '../hooks/useLocalCatalogItems';
+import { localItemToChip, isLocalId } from '../utils/localCatalog';
 
 export default function BrowsePage() {
   const [searchParams] = useSearchParams();
@@ -16,8 +19,20 @@ export default function BrowsePage() {
     query: searchParams.get('q') ?? '',
   });
 
-  // 按发布年份由近到远排序，关注项置顶
-  const sorted = sortByYearThenFavorites(chips);
+  // 本地 AI 收录芯片：同步并入正常列表（新收录的 release=收录日期，排序在最前）
+  const localItems = useLocalCatalogItems('chip');
+  const localChips = useMemo(() => localItems.map(localItemToChip), [localItems]);
+
+  // 按发布年份由近到远排序，关注项置顶（本地收录按收录时间排最前）
+  const sorted = useMemo(() => {
+    const seen = new Set<string>();
+    const merged = [...localChips, ...chips].filter((c) => {
+      if (seen.has(c.id)) return false;
+      seen.add(c.id);
+      return true;
+    });
+    return sortByYearThenFavorites(merged);
+  }, [chips, localChips]);
 
   return (
     <div className="space-y-4">
@@ -30,7 +45,7 @@ export default function BrowsePage() {
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {sorted.map((c) => (
-            <ChipCard key={c.id} chip={c} />
+            <ChipCard key={c.id} chip={c} isAiCollected={isLocalId(c.id)} />
           ))}
         </div>
       )}
