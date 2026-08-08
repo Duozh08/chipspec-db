@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { apiList, cloudbaseEnabled } from '../utils/apiClient';
 import { markPendingFilled } from '../utils/pendingStore';
-import { saveLocalCatalogFilled } from '../utils/localCatalog';
+import { addLocalCatalogItem, saveLocalCatalogFilled } from '../utils/localCatalog';
 
 export interface SyncState {
   /** 后端返回的已补全条目数 */
@@ -36,6 +36,12 @@ export function useCollectSync(intervalMs = 2500) {
           const hitPending = markPendingFilled(it.name, it.filledAt);
           // 同时把后端补全的 spec 写回本地条目（含处理器/显卡等硬件参数）
           const hitLocal = saveLocalCatalogFilled(it.name, it.spec, it.filledAt);
+          if (!hitLocal && it.spec) {
+            // 后端有补全但本地无条目（如游戏本收录联动自动补录的芯片）→ 创建本地条目并同步 spec
+            const created = await addLocalCatalogItem(it.name, it.category, it.brand);
+            await saveLocalCatalogFilled(it.name, it.spec, it.filledAt);
+            if (created) changed = true;
+          }
           if (hitPending || hitLocal) changed = true;
         }
         setState((prev) => ({

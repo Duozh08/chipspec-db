@@ -8,7 +8,7 @@ import { LAPTOP_BRAND_LABELS, cpuPlatform, fmtDieDims } from '../data/types';
 import { useFavorites } from '../hooks/useFavorites';
 import { getLaptopChipAdditions, addLaptopChipAddition, removeLaptopChipAddition, notifyChipAdditionsChanged } from '../utils/laptopChipAdditions';
 import { apiCollect } from '../utils/apiClient';
-import { addLocalCatalogItem, loadLocalCatalog, localItemToLaptop } from '../utils/localCatalog';
+import { addLocalCatalogItem, loadLocalCatalog, localItemToLaptop, loadLocalChips } from '../utils/localCatalog';
 import { addPendingItem, guessBrand } from '../utils/pendingStore';
 
 /** 从显卡方案字符串解析功耗，如 "RTX 4060 (140W)" → "140W" */
@@ -21,9 +21,10 @@ function normModel(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '');
 }
 
-/** 匹配 CPU 芯片（精确 → 直接包含 → 核心编号，命中多个时取最短型号）。formFactor 可选，默认全部（含桌面端） */
-function matchCpu(query: string, formFactor?: 'mobile' | 'desktop'): Chip | undefined {
-  let cpus = allChips.filter((c) => c.category === 'cpu');
+/** 匹配 CPU 芯片（精确 → 直接包含 → 核心编号，命中多个时取最短型号）。formFactor 可选，默认全部（含桌面端）。
+ *  pool = 站内静态芯片库 + 本地 AI 收录芯片，保证方案卡片能跳转到芯片详情页。 */
+function matchCpu(query: string, pool: Chip[], formFactor?: 'mobile' | 'desktop'): Chip | undefined {
+  let cpus = pool.filter((c) => c.category === 'cpu');
   if (formFactor) cpus = cpus.filter((c) => c.formFactor === formFactor);
   const q = normModel(query);
   if (q.length >= 4) {
@@ -43,13 +44,14 @@ function matchCpu(query: string, formFactor?: 'mobile' | 'desktop'): Chip | unde
   return undefined;
 }
 
-/** 匹配 GPU 芯片（RTX/GTX/RX 编号提取；区分 Ti 版本）。formFactor 可选，默认全部 */
-function matchGpu(query: string, formFactor?: 'mobile' | 'desktop'): Chip | undefined {
+/** 匹配 GPU 芯片（RTX/GTX/RX 编号提取；区分 Ti 版本）。formFactor 可选，默认全部。
+ *  pool = 站内静态芯片库 + 本地 AI 收录芯片 */
+function matchGpu(query: string, pool: Chip[], formFactor?: 'mobile' | 'desktop'): Chip | undefined {
   const lower = query.toLowerCase();
   const m = lower.match(/(rtx\s*\d+)/) ?? lower.match(/(gtx\s*\d+)/) ?? lower.match(/(rx\s*\d+)/);
   if (!m) return undefined;
   const key = m[1].replace(/\s+/g, '');
-  let cands = allChips.filter((c) => c.category === 'gpu' && normModel(c.model).includes(key));
+  let cands = pool.filter((c) => c.category === 'gpu' && normModel(c.model).includes(key));
   if (formFactor) cands = cands.filter((c) => c.formFactor === formFactor);
   if (cands.length === 0) return undefined;
   const isTi = /\bti\b/i.test(lower.replace(/\s+/g, ' '));
@@ -223,6 +225,11 @@ export default function LaptopDetailPage() {
   const [capturing, setCapturing] = useState(false);
   const [copyOk, setCopyOk] = useState(false);
   const [captureMsg, setCaptureMsg] = useState('');
+  // 本地芯片库版本号：AI 自动补录芯片 / spec 同步后自增，刷新方案卡片匹配
+  const [chipLibVersion, setChipLibVersion] = useState(0);
+
+  // 芯片匹配池 = 站内静态芯片库 + 本地 AI 收录芯片（chipLibVersion 变化时重建）
+  const chipPool = useMemo(() => [...allChips, ...loadLocalChips()], [chipLibVersion]);
 
   // 合并后的方案（站内静态 + 本地补充，去重）
   const allCpuOptions = [...laptop.cpuOptions, ...additions.cpus.filter((c) => !laptop.cpuOptions.some((x) => x.toLowerCase() === c.toLowerCase()))];
@@ -276,7 +283,7 @@ export default function LaptopDetailPage() {
   const CPU_CHIP_COLOR = hasAmd && hasIntel ? 'text-red-600' : hasAmd ? 'text-red-600' : 'text-blue-600';
   // 显卡品牌：优先查站内芯片库（matchGpu），未命中按型号前缀猜测
   const firstGpu = allGpuOptions[0];
-  const gpuChip = firstGpu ? matchGpu(firstGpu, 'mobile') ?? matchGpu(firstGpu) : undefined;
+  const gpuChip = firstGpu ? matchGpu(firstGpu, chipPool, 'mobile') ?? matchGpu(firstGpu, chipPool) : undefined;
   const GPU_CHIP_COLOR =
     gpuChip?.brand === 'amd' || (!gpuChip && /^(rx|radeon)/i.test(firstGpu?.trim() ?? ''))
       ? 'text-red-600'
@@ -312,8 +319,8 @@ export default function LaptopDetailPage() {
       // 查站内芯片库：游戏本场景优先移动端，未命中再回退桌面端
       const chipInfo =
         chipType === 'cpu'
-          ? (matchCpu(name, 'mobile') ?? matchCpu(name, 'desktop'))
-          : (matchGpu(name, 'mobile') ?? matchGpu(name, 'desktop'));
+          ? (matchCpu(name, chipPool, 'mobile') ?? matchCpu(name, chipPool, 'desktop'))
+          : (matchGpu(name, chipPool, 'mobile') ?? matchGpu(name, chipPool, 'desktop'));
       if (chipInfo) {
         // 站内已有该芯片 → 直接加入本地补充方案
         addLaptopChipAddition(laptop.id, chipType, name);
@@ -399,7 +406,7 @@ export default function LaptopDetailPage() {
     }
   };
 
-  // 跨页同步：其他标签页提交了补充方案后本页自动刷新
+  // 跨页同步：其他标签页提交了补充方案 / 本地芯片库变化后本页自动刷新
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
       if (e.key === 'chipspec-laptop-chip-additions') {
@@ -407,11 +414,15 @@ export default function LaptopDetailPage() {
       }
     };
     const onCustom = () => setAdditions(getLaptopChipAdditions(laptop.id));
+    // 本地芯片库变化（AI 自动补录芯片 / spec 同步）→ 触发重渲染，方案卡片重新匹配可点击
+    const onLocalCatalog = () => setChipLibVersion((v) => v + 1);
     window.addEventListener('storage', onStorage);
     window.addEventListener('chipspec-laptop-chip-additions', onCustom);
+    window.addEventListener('chipspec-local-catalog', onLocalCatalog);
     return () => {
       window.removeEventListener('storage', onStorage);
       window.removeEventListener('chipspec-laptop-chip-additions', onCustom);
+      window.removeEventListener('chipspec-local-catalog', onLocalCatalog);
     };
   }, [laptop.id]);
 
@@ -617,7 +628,7 @@ export default function LaptopDetailPage() {
                   </div>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {intelCpus.map((cpu, i) => {
-                  const chipInfo = matchCpu(cpu, 'mobile');
+                  const chipInfo = matchCpu(cpu, chipPool, 'mobile');
                   const isAdd = additions.cpus.some((c) => c.toLowerCase() === cpu.toLowerCase());
                   const inner = (
                     <>
@@ -682,7 +693,7 @@ export default function LaptopDetailPage() {
               </div>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {amdCpus.map((cpu, i) => {
-                  const chipInfo = matchCpu(cpu, 'mobile');
+                  const chipInfo = matchCpu(cpu, chipPool, 'mobile');
                   const isAdd = additions.cpus.some((c) => c.toLowerCase() === cpu.toLowerCase());
                   const inner = (
                     <>
@@ -750,7 +761,7 @@ export default function LaptopDetailPage() {
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {allGpuOptions.map((gpu, i) => {
               const power = parsePower(gpu);
-              const chipInfo = matchGpu(gpu, 'mobile');
+              const chipInfo = matchGpu(gpu, chipPool, 'mobile');
               const isAdd = additions.gpus.some((g) => g.toLowerCase() === gpu.toLowerCase());
               const inner = (
                 <div className="flex items-center gap-2">
