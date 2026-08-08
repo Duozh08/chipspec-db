@@ -102,14 +102,15 @@ function specCompleteness(spec, category) {
   return missing;
 }
 
-/** 游戏本联动：spec 中的处理器/显卡芯片若不在 catalog 库，自动创建补录（写 pending + 触发 autoFill） */
+/** 游戏本联动：spec 中的处理器/显卡芯片若不在 catalog 库，自动创建补录（写 pending + 触发 autoFill）。
+ *  芯片名先规范化：去掉功耗标注（"RTX 5060 (115W)" → "RTX 5060"）。 */
 async function ensureChipsCollected(app, db, spec) {
   const coll = db.collection('catalog');
   const chipNames = [
     ...(Array.isArray(spec.cpuOptions) ? spec.cpuOptions : []),
     ...(Array.isArray(spec.gpuOptions) ? spec.gpuOptions : []),
   ]
-    .map((s) => String(s || '').trim())
+    .map(normalizeChipName)
     .filter(Boolean);
   for (const chipName of chipNames) {
     try {
@@ -136,6 +137,14 @@ async function ensureChipsCollected(app, db, spec) {
       console.error(`ensureChipsCollected failed for ${chipName}`, err.message);
     }
   }
+}
+
+/** 规范化芯片名：去功耗标注（"RTX 5060 (115W)" → "RTX 5060"） */
+function normalizeChipName(raw) {
+  return String(raw || '')
+    .trim()
+    .replace(/\s*\([\d.,]+\s*W\)\s*$/i, '')
+    .trim();
 }
 
 /** 从芯片型号字符串猜测品牌（intel/amd/nvidia） */
