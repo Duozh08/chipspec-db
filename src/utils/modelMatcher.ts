@@ -99,6 +99,27 @@ export function matchChipsInText(text: string): MatchResult<Chip>[] {
   return results;
 }
 
+/** 判断 a 是否可通过在 target 中跳过不超过 maxSkip 个字符得到，
+ * 覆盖 OCR 把「天选6」拆成「天 6 选...」导致 token 为 "天6" 时仍能命中 "天选6"。 */
+function isApproxSubsequence(a: string, target: string, maxSkip = 1): boolean {
+  if (target.includes(a)) return true;
+  let i = 0,
+    j = 0,
+    skip = 0;
+  while (i < a.length && j < target.length) {
+    if (a[i] === target[j]) {
+      i++;
+      j++;
+      skip = 0;
+    } else {
+      j++;
+      skip++;
+      if (skip > maxSkip) return false;
+    }
+  }
+  return i === a.length;
+}
+
 /** 从 token 中提取"型号核心"（品牌剥离后的 中文/字母+数字 段）：
  * 「华硕天选6游戏本」→ 去品牌 "天选6游戏本" → 提取 "天选6"；
  * 「ASUS天选6」→ 去品牌 "天选6" → 提取 "天选6"。
@@ -120,7 +141,7 @@ export function matchLaptopsInText(text: string): MatchResult<Laptop>[] {
   const results: MatchResult<Laptop>[] = [];
   for (const laptop of allLaptops) {
     const d = normModel(laptop.displayName);
-    if (d.length < 4) continue;
+    if (d.length < 3) continue;
     for (const { tok, stripped } of all) {
       // 型号特征：含数字或中文（排除 "ultra"/"radeon" 等泛词）
       if (stripped.length < 3) continue;
@@ -133,9 +154,10 @@ export function matchLaptopsInText(text: string): MatchResult<Laptop>[] {
         results.push({ item: laptop, matchedText: tok });
         break;
       }
-      // 型号核心兜底：连写 token（"华硕天选6游戏本"）提取 "天选6" 后命中站内名
+      // 型号核心兜底：连写 token（"华硕天选6游戏本"）提取 "天选6" 后命中站内名；
+      // 用近似子序列覆盖 OCR 字符级切分导致 "天6" 对应 "天选6" 的场景。
       const core = extractModelCore(stripped);
-      if (core && core.length >= 3 && core !== stripped && d.includes(core)) {
+      if (core && core.length >= 2 && core !== stripped && isApproxSubsequence(core, d)) {
         results.push({ item: laptop, matchedText: tok });
         break;
       }
