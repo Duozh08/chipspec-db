@@ -34,12 +34,20 @@ function stripBrands(tok: string): string {
 
 /** 把文本按标点/空格切成 token（保留中文，如 拯救者Y9000P）。
  * 注意：只过滤空串，不按长度丢弃——「天选 6」会被切成 ["天选","6"]，
- * 短 token（如 2 字中文）保留给后续相邻合并/匹配使用。 */
+ * 短 token（如 2 字中文）保留给后续相邻合并/匹配使用。
+ * OCR 字符级切分兜底：当所有 token 都是单字符（"天 选 6 选 哪 一 个 套 餐"），
+ * 视为 OCR 在每个字符间插入了空格，去掉所有空格后整体作为一个 token 保留。 */
 function tokenize(text: string): string[] {
-  return text
+  const tokens = text
     .split(/[\s,，。;；:：|/\\()[\]{}<>《》'"“”·•、]+/)
     .map((t) => normModel(t))
     .filter((t) => t.length > 0);
+  const allSingle = tokens.length >= 3 && tokens.every((t) => t.length === 1);
+  if (allSingle) {
+    const compact = normModel(text.replace(/\s+/g, ''));
+    if (compact.length >= 3) return [compact, ...tokens];
+  }
+  return tokens;
 }
 
 /** 相邻 token 合并候选：中文/字母段 + 数字段（"天选"+"6"→"天选6"、"rtx"+"5060"→"rtx5060"）
