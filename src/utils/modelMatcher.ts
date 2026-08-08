@@ -20,9 +20,15 @@ const BRANDS_CN = [
   '机械革命', '七彩虹', '外星人', '雷蛇', '华为', '小米', '荣耀', '技嘉', '玩家国度',
 ];
 
+/** 英文品牌前缀（laptop 匹配时剥离，如 "ASUS天选6" → "天选6"） */
+const BRANDS_EN = ['asus', 'lenovo', 'hp', 'dell', 'acer', 'msi', 'razer', 'colorful', 'mechrevo', 'hasee', 'xiaomi', 'honor', 'gigabyte', 'huawei', 'machenike', 'thunderobot'];
+
 function stripBrands(tok: string): string {
   let s = tok;
   for (const b of BRANDS_CN) s = s.replace(b, '');
+  for (const b of BRANDS_EN) {
+    if (s.startsWith(b)) s = s.slice(b.length);
+  }
   return s;
 }
 
@@ -85,6 +91,19 @@ export function matchChipsInText(text: string): MatchResult<Chip>[] {
   return results;
 }
 
+/** 从 token 中提取"型号核心"（品牌剥离后的 中文/字母+数字 段）：
+ * 「华硕天选6游戏本」→ 去品牌 "天选6游戏本" → 提取 "天选6"；
+ * 「ASUS天选6」→ 去品牌 "天选6" → 提取 "天选6"。
+ * 用于 OCR 无空格连写（品牌+型号+泛词）时仍能命中站内名。 */
+function extractModelCore(stripped: string): string {
+  // 中文/字母段 + 数字段（数字前最多 6 个中文或字母，数字后跟字母）
+  const m = stripped.match(/^([\u4e00-\u9fff a-z]{1,6}\d+[a-z]*)/);
+  if (m && /\d/.test(m[1]) && /[\u4e00-\u9fff]/.test(m[1])) return m[1];
+  // 兜底：数字前至少 1 个中文，避免纯数字/纯字母
+  const m2 = stripped.match(/([\u4e00-\u9fff]{1,6}\d+[a-z]*)/);
+  return m2 && /\d/.test(m2[1]) ? m2[1] : '';
+}
+
 export function matchLaptopsInText(text: string): MatchResult<Laptop>[] {
   const tokens = tokenize(text).map((t) => ({ tok: t, stripped: stripBrands(t) }));
   // 合并 token（"天选"+"6"）也参与匹配，解决 OCR 中文数字带空格问题
@@ -103,6 +122,12 @@ export function matchLaptopsInText(text: string): MatchResult<Laptop>[] {
       // 双向包含：站内名包含 token（"暗影精灵10" ⊂ 站内名），
       // 或 token 包含站内名（OCR 输出完整型号串 "rog幻16air2025" 时也能命中）
       if (d.includes(stripped) || stripped.includes(d)) {
+        results.push({ item: laptop, matchedText: tok });
+        break;
+      }
+      // 型号核心兜底：连写 token（"华硕天选6游戏本"）提取 "天选6" 后命中站内名
+      const core = extractModelCore(stripped);
+      if (core && core.length >= 3 && core !== stripped && d.includes(core)) {
         results.push({ item: laptop, matchedText: tok });
         break;
       }
@@ -167,12 +192,19 @@ export function extractUnknownCandidates(text: string, limit = 8): UnknownCandid
   }
 
   // 2) 常规 token 候选：含数字 + 含字母或中文 + 长度 3~20（排除纯数字年份/功耗）
+  //    连写 token（"华硕天选6游戏本"）优先取型号核心（"天选6"）作为候选
   const candToks = [...tokens, ...mergedTokens(tokens)];
   for (const tok of candToks) {
     if (known.has(tok)) continue;
     if (/^20\d{2}$/.test(tok)) continue;
+    // 排除「2025款」等年份+泛词形态
+    if (/^(20\d{2}|[0-9]+)款$/.test(tok)) continue;
     if (/\d/.test(tok) && /[a-z\u4e00-\u9fff]/.test(tok) && tok.length >= 3 && tok.length <= 20) {
-      push({ name: tok, type: guessCandidateType(tok) });
+      const stripped = stripBrands(tok);
+      const core = extractModelCore(stripped);
+      // 长连写 token 有核心时用核心（"华硕天选6游戏本"→"天选6"），否则用原 token
+      const name = core && core.length < tok.length && core.length >= 3 ? core : tok;
+      push({ name, type: guessCandidateType(name) });
     }
   }
   return cands.slice(0, limit);
