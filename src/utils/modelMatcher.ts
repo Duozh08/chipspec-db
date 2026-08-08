@@ -66,11 +66,15 @@ function mergedTokens(tokens: string[]): string[] {
   return out;
 }
 
-export function matchChipsInText(text: string): MatchResult<Chip>[] {
+export function matchChipsInText(text: string, extraChips: Chip[] = []): MatchResult<Chip>[] {
   const tokens = tokenize(text);
   const whole = normModel(text);
   const results: MatchResult<Chip>[] = [];
-  for (const chip of allChips) {
+  const seenIds = new Set<string>();
+  const pool = [...allChips, ...extraChips];
+  for (const chip of pool) {
+    if (seenIds.has(chip.id)) continue;
+    seenIds.add(chip.id);
     const m = normModel(chip.model);
     if (m.length < 5) continue;
     let hitTok = '';
@@ -152,7 +156,7 @@ function extractModelCore(stripped: string): string {
   return m2 && /\d/.test(m2[1]) ? m2[1] : '';
 }
 
-export function matchLaptopsInText(text: string): MatchResult<Laptop>[] {
+export function matchLaptopsInText(text: string, extraLaptops: Laptop[] = []): MatchResult<Laptop>[] {
   const tokens = tokenize(text).map((t) => ({ tok: t, stripped: stripBrands(t) }));
   // 合并 token（"天选"+"6"）也参与匹配，解决 OCR 中文数字带空格问题
   const merged = mergedTokens(tokenize(text)).map((t) => ({ tok: t, stripped: stripBrands(t) }));
@@ -163,7 +167,9 @@ export function matchLaptopsInText(text: string): MatchResult<Laptop>[] {
   const cleanText = normModel(text);
   const results: MatchResult<Laptop>[] = [];
   const matchedIds = new Set<string>();
-  for (const laptop of allLaptops) {
+  const pool = [...allLaptops, ...extraLaptops];
+  for (const laptop of pool) {
+    if (matchedIds.has(laptop.id)) continue;
     const d = normModel(laptop.displayName);
     if (d.length < 3) continue;
     let pushed = false;
@@ -238,23 +244,44 @@ export function chipHardwareHint(c: Chip): string | null {
   return missing.length === 0 ? null : `硬件参数缺失：${missing.join('、')}`;
 }
 
-/** 候选类型猜测：芯片关键词优先，其次游戏本关键词，默认游戏本 */
-export function guessCandidateType(name: string): 'chip' | 'laptop' {
-  if (/rtx|gtx|rx\d|core|ryzen|i\d-\d|锐龙|酷睿|geforce|radeon|udna/i.test(name)) return 'chip';
+/** 候选类型猜测：命中芯片/游戏本关键词才返回类型，否则视为噪声 */
+export function guessCandidateType(name: string): 'chip' | 'laptop' | null {
+  if (/rtx|gtx|rx\d|core|ryzen|i\d-\d|锐龙|酷睿|geforce|radeon|udna|arc\s?b?\d{3}/i.test(name)) return 'chip';
   if (
-    /拯救者|天选|枪神|魔霸|暗影|光影|蛟龙|极光|旷世|掠夺者|泰坦|战神|战斧|灵刃|外星人|联想|华硕|惠普|机械革命|神舟|雷神|机械师|荣耀|小米/i.test(
+    /拯救者|天选|枪神|魔霸|暗影|光影|蛟龙|极光|旷世|掠夺者|泰坦|战神|战斧|灵刃|外星人|联想|华硕|惠普|机械革命|神舟|雷神|机械师|荣耀|小米|rog|玩家国度|幻|超神|冰刃|飞行堡垒|无畏|灵耀|thinkbook|legion|yoga|ge|暗夜骑士|暗影骑士|蜂鸟|swift|火影|吾空|alienware|macbook|雷影|redmi|红米|小新|ideapad/i.test(
       name
     )
   )
     return 'laptop';
-  return 'laptop';
+  return null;
 }
 
-export function extractUnknownCandidates(text: string, limit = 8): UnknownCandidate[] {
+/** 清理文本中的日期时间戳，避免把聊天时间（如 2026-8-8 10:1）误判为产品年份 */
+function stripDateTimestamps(text: string): string {
+  return text.replace(/\b20\d{2}[-/][0-1]?\d[-/][0-3]?\d(?:[ \t]\d{1,2}:\d{1,2}(?::\d{1,2})?)?\b/g, ' ');
+}
+
+/** 判断候选是否为明显的噪声（QQ昵称/用户名/乱码等），避免出现在待收录列表 */
+function isJunkCandidate(name: string): boolean {
+  // 中文数字前缀 + 长串纯数字（四199957、三123456）
+  if (/^[一二三四五六七八九十]{1,2}\d{5,}$/.test(name)) return true;
+  // 纯数字或价格符号组合
+  if (/^[\d¥$￥.,%()\-+]+$/.test(name)) return true;
+  // 无芯片/游戏本关键词
+  if (!guessCandidateType(name)) return true;
+  return false;
+}
+
+export function extractUnknownCandidates(
+  text: string,
+  extraChips: Chip[] = [],
+  extraLaptops: Laptop[] = [],
+  limit = 8
+): UnknownCandidate[] {
   const tokens = tokenize(text);
   const known = new Set<string>();
-  const chipMatches = matchChipsInText(text);
-  const laptopMatches = matchLaptopsInText(text);
+  const chipMatches = matchChipsInText(text, extraChips);
+  const laptopMatches = matchLaptopsInText(text, extraLaptops);
   chipMatches.forEach((r) => known.add(r.matchedText));
   laptopMatches.forEach((r) => known.add(r.matchedText));
 
@@ -263,8 +290,10 @@ export function extractUnknownCandidates(text: string, limit = 8): UnknownCandid
     if (!cands.some((x) => x.name === c.name)) cands.push(c);
   };
 
-  // 1) 年份感知：文本含年份（如 2025）且站内同系列未收录该年份 → 生成「款名 + 年份」候选
-  const yearMatch = text.match(/20\d{2}/);
+  // 1) 年份感知：文本含年份（如 2025）且站内同系列未收录该年份 → 生成「款名 + 年份」候选。
+  //    先剔除日期时间戳（如聊天消息时间 2026-8-8 10:1），避免把消息时间误判为产品年份。
+  const yearText = stripDateTimestamps(text);
+  const yearMatch = yearText.match(/20\d{2}/);
   const year = yearMatch ? yearMatch[0] : '';
   if (year && laptopMatches.length > 0) {
     // 系列 key：displayName 归一化并去掉末尾年份（"拯救者Y7000P2025" → "拯救者y7000p"）
@@ -309,7 +338,10 @@ export function extractUnknownCandidates(text: string, limit = 8): UnknownCandid
       // 长连写 token 有核心时用核心（"华硕天选6游戏本"→"天选6"），否则用原 token
       const name = core && core.length < tok.length && core.length >= 3 ? core : tok;
       if (isKnownVariant(name)) continue;
-      push({ name, type: guessCandidateType(name) });
+      if (isJunkCandidate(name)) continue;
+      const type = guessCandidateType(name);
+      if (!type) continue;
+      push({ name, type });
     }
   }
 

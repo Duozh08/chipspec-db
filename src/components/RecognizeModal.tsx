@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { BRAND_LABELS, LAPTOP_BRAND_LABELS } from '../data/types';
 import { addPendingItem, exportPendingItems, guessBrand, loadPendingItems, removePendingItem } from '../utils/pendingStore';
 import type { PendingItem } from '../utils/pendingStore';
-import { addLocalCatalogItem, saveLocalCatalogFilled } from '../utils/localCatalog';
+import { addLocalCatalogItem, loadLocalChips, loadLocalLaptops, saveLocalCatalogFilled } from '../utils/localCatalog';
 import { apiCollect, apiList } from '../utils/apiClient';
 import { matchChipsInText, matchLaptopsInText, extractUnknownCandidates } from '../utils/modelMatcher';
 import type { UnknownCandidate } from '../utils/modelMatcher';
@@ -43,17 +43,19 @@ export default function RecognizeModal({ onClose }: { onClose: () => void }) {
   }, [sync.changed]);
 
   const runMatch = useCallback((value: string) => {
-    const chips = matchChipsInText(value).map((r) => ({
+    const localChips = loadLocalChips();
+    const localLaptops = loadLocalLaptops();
+    const chips = matchChipsInText(value, localChips).map((r) => ({
       id: r.item.id, model: r.item.model, brand: r.item.brand,
       category: r.item.category, matchedText: r.matchedText,
     }));
-    const laps = matchLaptopsInText(value).map((r) => ({
+    const laps = matchLaptopsInText(value, localLaptops).map((r) => ({
       id: r.item.id, name: r.item.displayName, model: r.item.model,
       brand: r.item.brand, year: r.item.release?.slice(0, 4) ?? '', matchedText: r.matchedText,
     }));
     setChipHits(chips.filter((c, i) => chips.findIndex((x) => x.id === c.id) === i).slice(0, 10));
     setLaptopHits(laps.filter((l, i) => laps.findIndex((x) => x.id === l.id) === i).slice(0, 10));
-    setUnknowns(extractUnknownCandidates(value));
+    setUnknowns(extractUnknownCandidates(value, localChips, localLaptops));
   }, []);
 
   /** 从 textarea 实时读取文本（避免闭包捕获旧值）并重新匹配 */
