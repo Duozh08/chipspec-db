@@ -141,15 +141,37 @@ export default function LaptopDetailPage() {
     .sort((a, b) => (b.release ?? '').localeCompare(a.release ?? ''))
     .slice(0, 6);
 
-  const specs: [string, string][] = [
+  // 品牌主色（用于基本规格中处理器/显卡方案的强调显示）
+  const BRAND_COLOR: Record<string, string> = {
+    lenovo: 'text-red-600',
+    asus: 'text-blue-700',
+    hp: 'text-blue-600',
+    dell: 'text-sky-700',
+    acer: 'text-emerald-600',
+    msi: 'text-rose-600',
+    razer: 'text-green-600',
+    colorful: 'text-fuchsia-600',
+    mechrevo: 'text-indigo-600',
+    hasee: 'text-amber-600',
+    xiaomi: 'text-orange-600',
+    honor: 'text-cyan-600',
+    gigabyte: 'text-violet-600',
+    huawei: 'text-red-600',
+    machenike: 'text-teal-600',
+    thunderobot: 'text-sky-600',
+  };
+  const brandColor = BRAND_COLOR[laptop.brand] ?? 'text-blue-600';
+
+  // 基本规格：处理器方案 / 显卡方案置顶并强调显示
+  const specs: [string, string, boolean?][] = [
+    ['处理器方案', `${allCpuOptions.length} 种（${allCpuOptions.join(' / ')}）`, true],
+    ['显卡方案', `${allGpuOptions.length} 种（${allGpuOptions.join(' / ')}）`, true],
     ['品牌', LAPTOP_BRAND_LABELS[laptop.brand]],
     ['系列', laptop.series],
     ['中文名称', laptop.displayName],
     ['型号', laptop.model],
     ['发布时间', laptop.release ?? '暂无数据'],
     ['处理器平台', hasAmd && hasIntel ? 'Intel + AMD 双平台' : hasAmd ? 'AMD' : 'Intel'],
-    ['处理器方案', `${allCpuOptions.length} 种（${allCpuOptions.join(' / ')}）`],
-    ['显卡方案', `${allGpuOptions.length} 种（${allGpuOptions.join(' / ')}）`],
     ['最大显卡功耗', maxGpuPowerW != null ? `${maxGpuPowerW} W` : '暂无数据'],
     ['内存', laptop.ram],
     ['硬盘', laptop.storage],
@@ -350,10 +372,15 @@ export default function LaptopDetailPage() {
               基本规格
             </div>
             <dl className="divide-y divide-slate-100">
-              {specs.map(([label, value]) => (
-                <div key={label} className="grid grid-cols-[8.5rem_1fr] gap-4 px-4 py-2.5 text-sm">
-                  <dt className="text-slate-500">{label}</dt>
-                  <dd className="text-slate-800">{value}</dd>
+              {specs.map(([label, value, highlight]) => (
+                <div
+                  key={label}
+                  className={`grid grid-cols-[8.5rem_1fr] gap-4 px-4 py-2.5 text-sm ${
+                    highlight ? 'bg-slate-50/80' : ''
+                  }`}
+                >
+                  <dt className={`${highlight ? 'font-bold ' + brandColor : 'text-slate-500'}`}>{label}</dt>
+                  <dd className={`${highlight ? 'font-bold ' + brandColor : 'text-slate-800'}`}>{value}</dd>
                 </div>
               ))}
             </dl>
