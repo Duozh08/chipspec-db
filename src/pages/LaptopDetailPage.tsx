@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { allLaptops, getLaptopById } from '../data/laptops';
 import { stressTests } from '../data/stress-tests';
@@ -91,20 +91,30 @@ function wrapCanvasLines(ctx: CanvasRenderingContext2D, text: string, maxWidth: 
   return lines;
 }
 
-/** 用 Canvas 绘制"基本规格"表格并返回 canvas（2x 高清输出） */
-function drawSpecsCanvas(specs: [string, string, string?][], width = 480): HTMLCanvasElement {
-  const padX = 16;
-  const labelW = 136;
-  const gap = 16;
-  const valueW = width - padX * 2 - labelW - gap;
+/** 用 Canvas 绘制"基本规格"表格并返回 canvas（2x 高清输出）。
+ *  宽度自适应：以内容最长一行的渲染宽度确定边界，左右边距对称（padX 相同）。 */
+function drawSpecsCanvas(specs: [string, string, string?][]): HTMLCanvasElement {
+  const padX = 16; // 左右边距（对称，用户要求两边边距相同）
+  const gap = 16; // label 与 value 间距
+  const labelExtra = 12; // label 列宽额外余量
+  const MAX_VALUE_W = 520; // value 单行最大宽度（超出则换行，避免图片过宽）
   const headerH = 42;
   const lineH = 22;
   const rowPad = 20; // 单行时上下各 10px
   const FONT = '"PingFang SC", "Microsoft YaHei", system-ui, sans-serif';
 
-  // 预测量：计算每行所需高度
+  // 预测量：label 列宽 = 最宽 label + 余量；value 列宽 = 最宽 value 单行宽度（上限 MAX_VALUE_W）
   const probe = document.createElement('canvas').getContext('2d')!;
   probe.font = `14px ${FONT}`;
+  const labelWs = specs.map(([label]) => probe.measureText(label).width);
+  const labelW = Math.max(...labelWs) + labelExtra;
+  const valueRawWs = specs.map(([, value]) => probe.measureText(value).width);
+  const valueW = Math.min(Math.max(...valueRawWs), MAX_VALUE_W);
+  const contentW = labelW + gap + valueW;
+  // 总宽 = 内容宽 + 左右对称边距；标题「基本规格」不窄于内容时以标题为准
+  const W = Math.max(padX * 2 + contentW, probe.measureText('基本规格').width + padX * 2);
+
+  // 每行高度（value 按 valueW 换行）
   const rowHeights: number[] = specs.map(([, value]) => {
     const lines = wrapCanvasLines(probe, value, valueW);
     return lines.length * lineH + rowPad;
@@ -113,7 +123,7 @@ function drawSpecsCanvas(specs: [string, string, string?][], width = 480): HTMLC
 
   // 2x 高清
   const canvas = document.createElement('canvas');
-  canvas.width = width * 2;
+  canvas.width = W * 2;
   canvas.height = totalH * 2;
   const ctx = canvas.getContext('2d')!;
   ctx.scale(2, 2);
@@ -122,18 +132,18 @@ function drawSpecsCanvas(specs: [string, string, string?][], width = 480): HTMLC
 
   // 背景
   ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, width, totalH);
+  ctx.fillRect(0, 0, W, totalH);
 
   // 标题栏
   ctx.fillStyle = '#f1f5f9';
-  ctx.fillRect(0, 0, width, headerH);
+  ctx.fillRect(0, 0, W, headerH);
   ctx.fillStyle = '#334155';
   ctx.font = `600 14px ${FONT}`;
   ctx.fillText('基本规格', padX, headerH / 2);
   ctx.strokeStyle = '#e2e8f0';
   ctx.beginPath();
   ctx.moveTo(0, headerH);
-  ctx.lineTo(width, headerH);
+  ctx.lineTo(W, headerH);
   ctx.stroke();
 
   // 数据行
@@ -145,12 +155,12 @@ function drawSpecsCanvas(specs: [string, string, string?][], width = 480): HTMLC
 
     // 行背景（高亮行浅灰）
     ctx.fillStyle = isHl ? 'rgba(241,245,249,0.9)' : '#ffffff';
-    ctx.fillRect(0, y, width, h);
+    ctx.fillRect(0, y, W, h);
     // 分隔线
     ctx.strokeStyle = '#e2e8f0';
     ctx.beginPath();
     ctx.moveTo(0, y);
-    ctx.lineTo(width, y);
+    ctx.lineTo(W, y);
     ctx.stroke();
 
     // 标签
@@ -172,7 +182,7 @@ function drawSpecsCanvas(specs: [string, string, string?][], width = 480): HTMLC
   ctx.strokeStyle = '#e2e8f0';
   ctx.beginPath();
   ctx.moveTo(0, y);
-  ctx.lineTo(width, y);
+  ctx.lineTo(W, y);
   ctx.stroke();
 
   return canvas;
@@ -214,7 +224,6 @@ export default function LaptopDetailPage() {
   const [chipMsg, setChipMsg] = useState<{ kind: 'ok' | 'info' | 'err'; text: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   // 基本规格一键截图状态
-  const specsBoxRef = useRef<HTMLDivElement>(null);
   const [capturing, setCapturing] = useState(false);
   const [copyOk, setCopyOk] = useState(false);
   const [captureMsg, setCaptureMsg] = useState('');
@@ -362,11 +371,8 @@ export default function LaptopDetailPage() {
     setCapturing(true);
     setCaptureMsg('');
     try {
-      // 截图宽度跟随模块实际宽度（有值用实际值，否则回退 480）
-      const width = specsBoxRef.current?.offsetWidth && specsBoxRef.current.offsetWidth > 0
-        ? specsBoxRef.current.offsetWidth
-        : 480;
-      const canvas = drawSpecsCanvas(specs, width);
+      // 宽度自适应内容：以最长一行文字确定边界，左右边距相同
+      const canvas = drawSpecsCanvas(specs);
       const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/png'));
       if (!blob) throw new Error('截图生成失败');
       // 复制到剪贴板（ClipboardItem：Chrome/Edge 91+、Safari 13.1+）
@@ -531,7 +537,7 @@ export default function LaptopDetailPage() {
         {/* 右列 */}
         <div className="flex min-w-0 flex-col gap-5">
           {/* 基本规格表 */}
-          <div ref={specsBoxRef} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
             <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-4 py-2.5">
               <span className="text-sm font-semibold text-slate-700">基本规格</span>
               <button
