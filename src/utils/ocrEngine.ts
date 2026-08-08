@@ -108,6 +108,49 @@ export async function prepareImage(file: File, maxDim = MAX_IMAGE_DIM): Promise<
   }
 }
 
+/**
+ * 云 OCR 专用图片压缩：canvas 等比缩放（长边 ≤ 1200px）+ JPEG 迭代降质，
+ * 保证 base64 ≤ CLOUD_OCR_MAX_B64（HTTP 网关 body 限制约 100KB）。
+ * 返回 dataURL 形式的 base64 串（不含前缀）；任何异常返回 null（由调用方降级）。
+ */
+export const CLOUD_OCR_MAX_B64 = 90 * 1024;
+
+export async function compressForCloudOcr(file: File | Blob, maxDim = 1200): Promise<string | null> {
+  try {
+    const url = URL.createObjectURL(file);
+    try {
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const el = new Image();
+        el.onload = () => resolve(el);
+        el.onerror = () => reject(new Error('图片解码失败'));
+        el.src = url;
+      });
+      const scale = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return null;
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      // 迭代降质直到体积达标
+      for (const quality of [0.78, 0.6, 0.45, 0.3]) {
+        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+        const b64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
+        if (b64.length <= CLOUD_OCR_MAX_B64) return b64;
+      }
+      // 极限压缩仍超限 → 返回最后一档（函数侧也会校验，失败降级本地）
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.3);
+      return dataUrl.slice(dataUrl.indexOf(',') + 1);
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  } catch {
+    return null;
+  }
+}
+
 /** 获取引擎（单例）：CloudBase（快）优先，失败降级 GitHub Pages；已创建则直接返回 */
 export function ensureEngine(): Promise<OcrEngineHandle> {
   if (enginePromise) return enginePromise;

@@ -93,3 +93,38 @@ export async function apiNews(timeoutMs = 10000): Promise<NewsItem[]> {
   }
   return [];
 }
+
+/**
+ * 调用腾讯云 OCR（ocr 云函数，通用印刷体识别）。
+ * 图片 base64 需 ≤ ~90KB（HTTP 网关 body 限制约 100KB），
+ * 失败（网络/未授权/超限）抛错，由调用方降级本地 tesseract。
+ */
+export async function apiOcr(imageBase64: string, timeoutMs = 20000): Promise<string> {
+  if (!cloudbaseEnabled) throw new Error('CloudBase 未配置');
+  const urls = [
+    `https://${CLOUDBASE_ENV_ID}.service.tcloudbase.com/ocr`,
+    `https://${CLOUDBASE_ENV_ID}-1452185409.ap-shanghai.app.tcloudbase.com/ocr`,
+  ];
+  let lastErr: unknown = null;
+  for (const url of urls) {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64 }),
+        signal: ctrl.signal,
+      });
+      clearTimeout(timer);
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.ok === true) {
+        return typeof json.text === 'string' ? json.text : '';
+      }
+      throw new Error(json.error || `OCR API failed (${res.status})`);
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error('OCR 调用失败');
+}

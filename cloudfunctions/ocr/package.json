@@ -1,0 +1,7 @@
+{
+  "name": "ocr",
+  "version": "1.0.0",
+  "description": "腾讯云 OCR 通用印刷体识别（手动 TC3 签名，零依赖）",
+  "main": "index.js",
+  "dependencies": {}
+}

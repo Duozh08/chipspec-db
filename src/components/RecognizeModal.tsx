@@ -4,11 +4,11 @@ import { BRAND_LABELS, LAPTOP_BRAND_LABELS } from '../data/types';
 import { addPendingItem, exportPendingItems, guessBrand, loadPendingItems, removePendingItem } from '../utils/pendingStore';
 import type { PendingItem } from '../utils/pendingStore';
 import { addLocalCatalogItem, loadLocalChips, loadLocalLaptops, saveLocalCatalogFilled } from '../utils/localCatalog';
-import { apiCollect, apiList } from '../utils/apiClient';
+import { apiCollect, apiList, apiOcr } from '../utils/apiClient';
 import { matchChipsInText, matchLaptopsInText, extractUnknownCandidates } from '../utils/modelMatcher';
 import type { UnknownCandidate } from '../utils/modelMatcher';
 import { useCollectSync } from '../hooks/useCollectSync';
-import { ensureEngine, prepareImage, resetEngine, setEngineStatusCb, warmup } from '../utils/ocrEngine';
+import { compressForCloudOcr, ensureEngine, prepareImage, resetEngine, setEngineStatusCb, warmup } from '../utils/ocrEngine';
 
 export default function RecognizeModal({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
@@ -139,8 +139,31 @@ export default function RecognizeModal({ onClose }: { onClose: () => void }) {
     setErrorMsg('');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let worker: any = null;
+    let cloudUsed = false;
     try {
-      // 复用模块级单例引擎（预热/上次识别已加载则直接可用，无需重新下载）
+      setPhase('recognizing');
+      setStatusText('识别中…');
+      setProgress(0);
+
+      // ① 云端 OCR 优先（腾讯云通用印刷体识别，中英混排/屏幕截图质量远超本地 tesseract）
+      try {
+        const b64 = await compressForCloudOcr(file);
+        if (b64) {
+          const cloudText = await apiOcr(b64);
+          if (cloudText && cloudText.trim()) {
+            cloudUsed = true;
+            setText(cloudText);
+            runMatch(cloudText);
+            setPhase('idle');
+            setStatusText('');
+            return;
+          }
+        }
+      } catch (cloudErr) {
+        console.warn('[ocr] 云端识别失败，降级本地引擎', cloudErr);
+      }
+
+      // ② 兜底：本地 tesseract 引擎（复用模块级单例）
       setEngineStatusCb((status, progress, p) => {
         if (p === 'loading' || p === 'downloading') {
           setPhase(p);
@@ -151,7 +174,7 @@ export default function RecognizeModal({ onClose }: { onClose: () => void }) {
       const engine = await ensureEngine();
       worker = engine.worker;
       setPhase('recognizing');
-      setStatusText('识别中…');
+      setStatusText('本地识别中…');
       setProgress(0);
       // 移动端优化：大图先等比缩小（≤2400px），省内存、加快识别
       const prepared = await prepareImage(file);
@@ -181,7 +204,7 @@ export default function RecognizeModal({ onClose }: { onClose: () => void }) {
       setPhase('error');
       setErrorMsg(`识别失败：${msg.slice(0, 120)}`);
     } finally {
-      setEngineStatusCb(null);
+      if (!cloudUsed) setEngineStatusCb(null);
       setRecognizing(false);
     }
   };
