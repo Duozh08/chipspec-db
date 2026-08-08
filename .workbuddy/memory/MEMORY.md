@@ -39,11 +39,13 @@
 - ocrEngine.ts：`ensureEngine` 顺序 cloudbase→github；缓存命名空间 `tess-fast-v4`；tesseract.js-core 的 wasm.js 为 SINGLE_FILE（base64 内嵌 wasm，外部 .wasm 用不到）
 - CORS：CloudBase 静态托管回显 Origin + credentials，跨域 worker/importScripts/fetch 全通
 
-## 腾讯云 OCR（2026-08-08 上线，待授权）
-- **ocr 云函数**：手动 TC3-HMAC-SHA256 签名调 GeneralBasicOCR（零依赖，仅 crypto/https）；凭证优先环境变量 `OCR_SECRET_ID/OCR_SECRET_KEY`，兜底 SCF 临时密钥（TENCENTCLOUD_SECRETID，角色 TCB_QcsRole **默认无 OCR 权限** → 当前报 UnauthorizedOperation）
-- **待用户操作（二选一）**：① 提供腾讯云 API 密钥 → 配置到 ocr 函数 envVariables（OCR_SECRET_ID/OCR_SECRET_KEY，建议子账号 QcloudOCRFullAccess）；② 控制台访问管理→角色→TCB_QcsRole→附加 QcloudOCRFullAccess
-- 前端：RecognizeModal 云 OCR 优先（compressForCloudOcr 压缩 JPEG ≤90KB，**HTTP 网关 body 限制 ~100KB**）→ 失败降级本地 tesseract（不影响使用）
+## 腾讯云 OCR（2026-08-08 已上线 ✅）
+- **ocr 云函数**：手动 TC3-HMAC-SHA256 签名调 GeneralBasicOCR（零依赖，仅 crypto/https）；凭证优先环境变量 `OCR_SECRET_ID/OCR_SECRET_KEY`（用户已提供，已配置到函数环境变量），兜底 SCF 临时密钥
+- **部署四步已完成**：createFunction → createRoute(/ocr) → 匿名放开 → 用户控制台开通 OCR 服务 + 通用印刷体识别资源包
+- 验证：真实截图识别成功（「y7000p适合哪个」准确识别，对比 tesseract 的乱码「个 EE P-」质量大幅提升）
+- 前端：RecognizeModal 云 OCR 优先（compressForCloudOcr 压缩 JPEG ≤90KB，**HTTP 网关 body 限制 ~100KB**）→ 失败降级本地 tesseract
 - apiClient.apiOcr：service 域名优先 + app 域名兜底
+- 踩坑记录：① 控制台地址是 `console.cloud.tencent.com/ocr/general`（`/ocr` 404）；② 未开通服务报 UnOpenError；③ 未领取资源包报 ResourcePackageRunOut
 
 ## 收藏云同步 + PWA + 资讯页（2026-08-08 上线）
 - **favorites 云函数**：按 deviceId（前端 localStorage `chipspec-device-id` 生成 UUID）get/set 整个收藏列表；useFavorites 本地∪云端合并 + 800ms 防抖写云端；无登录体系，换浏览器即新设备
